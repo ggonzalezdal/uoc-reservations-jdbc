@@ -40,4 +40,32 @@ public class CustomerDao {
 
         return customers;
     }
+
+    public long insert(String fullName, String email) {
+        String sql = """
+        INSERT INTO customers (full_name, email)
+        VALUES (?, ?)
+        RETURNING customer_id
+        """;
+
+        try (
+                Connection conn = Database.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)
+        ) {
+            stmt.setString(1, fullName);
+            stmt.setString(2, email);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getLong("customer_id");
+                } else {
+                    throw new RuntimeException("Insert failed, no ID returned");
+                }
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error inserting customer", e);
+        }
+    }
+
 }

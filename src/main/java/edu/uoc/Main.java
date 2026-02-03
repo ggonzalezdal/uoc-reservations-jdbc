@@ -24,6 +24,10 @@ public class Main {
             e.printStackTrace();
         }*/
         CustomerDao dao = new CustomerDao();
+
+        long id = dao.insert("Gordon Ramsay", "gordon@kitchen.com");
+        System.out.println("Inserted customer with id = " + id);
+
         dao.findAll().forEach(System.out::println);
     }
 }
