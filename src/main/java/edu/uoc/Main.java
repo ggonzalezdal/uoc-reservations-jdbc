@@ -1,15 +1,17 @@
 package edu.uoc;
 
-import edu.uoc.db.Database;
+import edu.uoc.dao.CustomerDao;
 
-import java.sql.Connection;
-import java.sql.SQLException;
+//import edu.uoc.db.Database;
+
+//import java.sql.Connection;
+//import java.sql.SQLException;
 
 public class Main {
 
     public static void main(String[] args) {
 
-        try (Connection conn = Database.getConnection()) {
+        /*try (Connection conn = Database.getConnection()) {
 
             System.out.println("Connected to database!");
             System.out.println("DB product   : " + conn.getMetaData().getDatabaseProductName());
@@ -20,6 +22,8 @@ public class Main {
         } catch (SQLException e) {
             System.err.println("Connection failed!");
             e.printStackTrace();
-        }
+        }*/
+        CustomerDao dao = new CustomerDao();
+        dao.findAll().forEach(System.out::println);
     }
 }
