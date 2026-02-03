@@ -1,80 +1,132 @@
-# jdbc-template
+# uoc-reservations-jdbc
 
-Minimal Java + Gradle template for connecting to PostgreSQL using JDBC.
+Educational Java backend project built from a JDBC template, focused on learning **relational databases**, **JDBC**, and **clean backend architecture** step by step.
 
-This project is intended as a learning and starter template.
-
-Database credentials are **not** stored in code and must be provided via
-environment variables.
+This project is part of a learning path where database access is implemented **manually** (without Spring or JPA) to fully understand how Java applications interact with PostgreSQL.
 
 ---
 
-## Requirements
+## Goals
 
-- Java JDK installed
-- PostgreSQL running locally or remotely
-- Gradle Wrapper (included)
+- Understand how JDBC works under the hood
+- Practice clean separation of concerns:
+    - database connection
+    - data access (DAO)
+    - domain models
+    - application entry point
+- Learn how to:
+    - read data from a database
+    - insert data safely
+    - handle missing data correctly
+- Build a solid foundation before moving to frameworks like Spring and JPA
+
+---
+
+## Project Structure
+
+```
+src/main/java/edu/uoc/
+├─ Main.java              # Application entry point (CLI)
+├─ db/
+│  └─ Database.java       # Centralized JDBC connection helper
+├─ model/
+│  └─ Customer.java       # Domain model (maps to customers table)
+└─ dao/
+   └─ CustomerDao.java    # Data Access Object (SQL + JDBC)
+```
+
+---
+
+## Database
+
+This project uses **PostgreSQL**.
+
+Example table used in the project:
+
+```sql
+CREATE TABLE customers (
+  customer_id BIGSERIAL PRIMARY KEY,
+  full_name   VARCHAR(100) NOT NULL,
+  email       VARCHAR(255),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
 
 ---
 
 ## Configuration (Environment Variables)
 
-The application reads database configuration from environment variables.
+Database credentials are **not stored in code**.
 
-### Required variables
+The application expects the following environment variables:
 
-- DB_URL  
-  Default: jdbc:postgresql://localhost:5432/uoc_databases
+- `DB_URL`  
+  Example: `jdbc:postgresql://localhost:5432/uoc_databases`
 
-- DB_USER  
-  Default: postgres
+- `DB_USER`  
+  Example: `postgres`
 
-- DB_PASSWORD  
-  No default (must be provided)
+- `DB_PASSWORD`  
+  Your PostgreSQL password
+
+### IntelliJ
+Set them in **Run → Edit Configurations → Environment variables**.
+
+### PowerShell (temporary)
+```powershell
+$Env:DB_URL="jdbc:postgresql://localhost:5432/uoc_databases"
+$Env:DB_USER="postgres"
+$Env:DB_PASSWORD="your_password"
+```
 
 ---
 
-## Running the application
+## Running the Project
 
-### Windows (PowerShell)
-
-Environment variables set this way are temporary and apply only to the
-current terminal session.
+Using Gradle wrapper:
 
 ```powershell
-$env:DB_URL="jdbc:postgresql://localhost:5432/uoc_databases"
-$env:DB_USER="postgres"
-$env:DB_PASSWORD="your_password_here"
-./gradlew run
+.\gradlew.bat run
 ```
+
+Or run `Main` directly from IntelliJ.
 
 ---
 
-### macOS / Linux (bash / zsh)
+## What This Project Covers
 
-```bash
-export DB_URL="jdbc:postgresql://localhost:5432/uoc_databases"
-export DB_USER="postgres"
-export DB_PASSWORD="your_password_here"
-./gradlew run
-```
+Currently implemented features:
+
+- Connect to PostgreSQL using JDBC
+- Retrieve all customers (`findAll`)
+- Retrieve a customer by ID (`findById`)
+- Insert a new customer (`insert`)
+- Proper resource management (`try-with-resources`)
+- Safe SQL using `PreparedStatement`
+- Explicit mapping from SQL rows to Java objects
 
 ---
 
-### IntelliJ IDEA
+## What Comes Next
 
-1. Run → Edit Configurations…
-2. Select the Application configuration
-3. Add Environment variables:
-   - DB_URL=jdbc:postgresql://localhost:5432/uoc_databases
-   - DB_USER=postgres
-   - DB_PASSWORD=your_password_here
-4. Apply and run
+Planned next steps:
+
+- Simple CLI menu (list / add / find customers)
+- Reservation entity and DAO (foreign keys)
+- Transactions
+- Error handling improvements
+- Preparing the backend to serve a web/API layer
 
 ---
 
 ## Notes
 
-- Do NOT commit real credentials to the repository
-- Use `.env.example` as a reference for required variables
-- The application will fail to connect if DB_PASSWORD is not provided
+- This project intentionally avoids frameworks (Spring, JPA) at first.
+- The goal is **understanding**, not speed.
+- Once the fundamentals are clear, migrating to Spring/JPA becomes much easier.
+
+---
+
+## License
+
+Educational use only.
