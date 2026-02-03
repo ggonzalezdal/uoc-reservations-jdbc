@@ -10,6 +10,8 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import java.util.Optional;
+
 public class CustomerDao {
 
     public List<Customer> findAll() {
@@ -67,5 +69,38 @@ public class CustomerDao {
             throw new RuntimeException("Error inserting customer", e);
         }
     }
+
+    public Optional<Customer> findById(long id) {
+        String sql = """
+        SELECT customer_id, full_name, email, created_at
+        FROM customers
+        WHERE customer_id = ?
+        """;
+
+        try (
+                Connection conn = Database.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)
+        ) {
+            stmt.setLong(1, id);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    Customer customer = new Customer(
+                            rs.getLong("customer_id"),
+                            rs.getString("full_name"),
+                            rs.getString("email"),
+                            rs.getObject("created_at", OffsetDateTime.class)
+                    );
+                    return Optional.of(customer);
+                } else {
+                    return Optional.empty();
+                }
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error fetching customer with id " + id, e);
+        }
+    }
+
 
 }

@@ -25,9 +25,16 @@ public class Main {
         }*/
         CustomerDao dao = new CustomerDao();
 
-        long id = dao.insert("Gordon Ramsay", "gordon@kitchen.com");
-        System.out.println("Inserted customer with id = " + id);
+//        long id = dao.insert("Gordon Ramsay", "gordon@kitchen.com");
+//        System.out.println("Inserted customer with id = " + id);
+//
+//        dao.findAll().forEach(System.out::println);
 
-        dao.findAll().forEach(System.out::println);
+        long testId = 1; // change to an ID that exists
+        dao.findById(testId)
+                .ifPresentOrElse(
+                        System.out::println,
+                        () -> System.out.println("Customer not found")
+                );
     }
 }
