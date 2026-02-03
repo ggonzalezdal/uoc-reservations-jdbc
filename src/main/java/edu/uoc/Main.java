@@ -1,19 +1,15 @@
 package edu.uoc;
 
+import edu.uoc.db.Database;
+
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class Main {
 
     public static void main(String[] args) {
 
-        // Use env vars so secrets are not committed to GitHub
-        String url      = getenvOrDefault("DB_URL", "jdbc:postgresql://localhost:5432/uoc_databases");
-        String user     = getenvOrDefault("DB_USER", "postgres");
-        String password = getenvOrDefault("DB_PASSWORD", ""); // set in env, not in code
-
-        try (Connection conn = DriverManager.getConnection(url, user, password)) {
+        try (Connection conn = Database.getConnection()) {
 
             System.out.println("Connected to database!");
             System.out.println("DB product   : " + conn.getMetaData().getDatabaseProductName());
@@ -25,10 +21,5 @@ public class Main {
             System.err.println("Connection failed!");
             e.printStackTrace();
         }
-    }
-
-    private static String getenvOrDefault(String key, String defaultValue) {
-        String v = System.getenv(key);
-        return (v == null || v.isBlank()) ? defaultValue : v;
     }
 }
