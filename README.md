@@ -1,8 +1,10 @@
 # uoc-reservations-jdbc
 
-Educational Java backend project built from a JDBC template, focused on learning **relational databases**, **JDBC**, and **clean backend architecture** step by step.
+Educational Java backend project built from a JDBC template, focused on learning relational databases, JDBC, and clean backend architecture step by step.
 
-This project is part of a learning path where database access is implemented **manually** (without Spring or JPA) to fully understand how Java applications interact with PostgreSQL.
+This project is part of a learning path where database access is implemented manually (without Spring or JPA) to fully understand how Java applications interact with PostgreSQL and how relational models are used from Java code.
+
+The project currently models a **simple restaurant reservation system**.
 
 ---
 
@@ -10,84 +12,97 @@ This project is part of a learning path where database access is implemented **m
 
 - Understand how JDBC works under the hood
 - Practice clean separation of concerns:
-    - database connection
-    - data access (DAO)
-    - domain models
-    - application entry point
+  - database connection
+  - data access (DAO)
+  - domain models
+  - application entry point (CLI)
 - Learn how to:
-    - read data from a database
-    - insert data safely
-    - handle missing data correctly
+  - read data from a relational database
+  - insert data safely
+  - work with foreign keys and constraints
+  - handle missing or invalid data correctly
 - Build a solid foundation before moving to frameworks like Spring and JPA
 
 ---
 
 ## Project Structure
 
-```
 src/main/java/edu/uoc/
-├─ Main.java              # Application entry point (CLI)
-├─ db/
-│  └─ Database.java       # Centralized JDBC connection helper
-├─ model/
-│  └─ Customer.java       # Domain model (maps to customers table)
-└─ dao/
-   └─ CustomerDao.java    # Data Access Object (SQL + JDBC)
-```
+
+- Main.java  
+  Application entry point.  
+  Simple CLI used to interact with the database.
+
+- db/  
+  Database.java  
+  Centralized JDBC connection helper.
+
+- model/  
+  Customer.java  
+  Reservation.java  
+  Domain models mapping database tables to Java objects.
+
+- dao/  
+  CustomerDao.java  
+  ReservationDao.java  
+  Data Access Objects containing SQL and JDBC logic.
 
 ---
 
 ## Database
 
-This project uses **PostgreSQL**.
+This project uses **PostgreSQL** with a normalized relational schema.
 
-Example table used in the project:
+The database models a restaurant reservation domain with the following entities:
 
-```sql
-CREATE TABLE customers (
-  customer_id BIGSERIAL PRIMARY KEY,
-  full_name   VARCHAR(100) NOT NULL,
-  email       VARCHAR(255),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
+- customers
+- reservations
+- physical restaurant tables
+- reservation–table mapping (many-to-many)
+
+The schema enforces data integrity using:
+
+- primary keys
+- foreign keys
+- NOT NULL, CHECK, and UNIQUE constraints
+
+Business rules such as availability checks, overlapping reservations, or capacity validation are intentionally not implemented yet and will be introduced progressively.
 
 ---
 
 ## Configuration (Environment Variables)
 
-Database credentials are **not stored in code**.
+Database credentials are not stored in code.
 
 The application expects the following environment variables:
 
-- `DB_URL`  
-  Example: `jdbc:postgresql://localhost:5432/uoc_databases`
+- DB_URL  
+  Example: jdbc:postgresql://localhost:5432/uoc_databases
 
-- `DB_USER`  
-  Example: `postgres`
+- DB_USER  
+  Example: postgres
 
-- `DB_PASSWORD`  
+- DB_PASSWORD  
   Your PostgreSQL password
 
 ### IntelliJ
-Set them in **Run → Edit Configurations → Environment variables**.
+
+Set them in:  
+Run → Edit Configurations → Environment variables
 
 ### PowerShell (temporary)
-```powershell
-$Env:DB_URL="jdbc:postgresql://localhost:5432/uoc_databases"
-$Env:DB_USER="postgres"
-$Env:DB_PASSWORD="your_password"
-```
+
+- `$Env:DB_URL="jdbc:postgresql://localhost:5432/uoc_databases"`
+- `$Env:DB_USER="postgres"`
+- `$Env:DB_PASSWORD="your_password"`
 
 ---
 
 ## Running the Project
 
-Using Gradle wrapper:
+Using the Gradle wrapper:
 
-```powershell
-.\gradlew.bat run
-```
+- `.\gradlew.bat run`
 
 Or run `Main` directly from IntelliJ.
 
@@ -97,13 +112,15 @@ Or run `Main` directly from IntelliJ.
 
 Currently implemented features:
 
-- Connect to PostgreSQL using JDBC
-- Retrieve all customers (`findAll`)
-- Retrieve a customer by ID (`findById`)
-- Insert a new customer (`insert`)
-- Proper resource management (`try-with-resources`)
-- Safe SQL using `PreparedStatement`
+- JDBC connection to PostgreSQL
+- DAO-based data access layer
+- Customer management (list, insert, find by ID)
+- Reservation creation and listing
+- Use of foreign keys and constraints
+- Safe SQL using PreparedStatement
 - Explicit mapping from SQL rows to Java objects
+- Proper resource management using try-with-resources
+- CLI-based interaction for learning and debugging
 
 ---
 
@@ -111,19 +128,21 @@ Currently implemented features:
 
 Planned next steps:
 
-- Simple CLI menu (list / add / find customers)
-- Reservation entity and DAO (foreign keys)
-- Transactions
-- Error handling improvements
-- Preparing the backend to serve a web/API layer
+- Assigning physical tables to reservations
+- Availability and capacity logic
+- Transactions spanning multiple DAO operations
+- Improved CLI flow (find-or-create customer)
+- Error handling and validation improvements
+- Preparing the backend to serve a web or API layer
 
 ---
 
 ## Notes
 
-- This project intentionally avoids frameworks (Spring, JPA) at first.
-- The goal is **understanding**, not speed.
-- Once the fundamentals are clear, migrating to Spring/JPA becomes much easier.
+- This project intentionally avoids frameworks (Spring, JPA) at first
+- The goal is understanding and correctness, not speed
+- All database access is explicit to make behavior visible
+- Once the fundamentals are clear, migrating to Spring/JPA becomes much easier
 
 ---
 
