@@ -1,151 +1,187 @@
 # uoc-reservations-jdbc
 
-Educational Java backend project built from a JDBC template, focused on learning relational databases, JDBC, and clean backend architecture step by step.
+Educational Java backend project built for the **UOC – Introduction to Databases** course.
 
-This project is part of a learning path where database access is implemented manually (without Spring or JPA) to fully understand how Java applications interact with PostgreSQL and how relational models are used from Java code.
+This repository implements a **clean JDBC-based backend** for a restaurant reservations domain, designed to understand how Java applications interact with a relational database **without frameworks** (no Spring, no JPA).
 
-The project currently models a **simple restaurant reservation system**.
+It is intentionally structured as a **backbone project**: correct, readable, and extensible, but not yet feature-complete.
 
 ---
 
-## Goals
+## Purpose of this project
 
-- Understand how JDBC works under the hood
+The main goals of this project are to:
+
+- Understand JDBC at a low level (connections, prepared statements, result sets)
 - Practice clean separation of concerns:
-  - database connection
-  - data access (DAO)
   - domain models
+  - data access (DAO)
+  - DTOs for read models
   - application entry point (CLI)
 - Learn how to:
-  - read data from a relational database
+  - read data from a PostgreSQL database
   - insert data safely
-  - work with foreign keys and constraints
-  - handle missing or invalid data correctly
-- Build a solid foundation before moving to frameworks like Spring and JPA
+  - map relational rows to Java objects
+  - prepare for transaction-safe service layers
+
+This project is designed as a **foundation** for later extensions, not as a final restaurant system.
 
 ---
 
-## Project Structure
+## Project structure
 
-src/main/java/edu/uoc/
-
-- Main.java  
-  Application entry point.  
-  Simple CLI used to interact with the database.
-
-- db/  
-  Database.java  
-  Centralized JDBC connection helper.
-
-- model/  
-  Customer.java  
-  Reservation.java  
-  Domain models mapping database tables to Java objects.
-
-- dao/  
-  CustomerDao.java  
-  ReservationDao.java  
-  Data Access Objects containing SQL and JDBC logic.
+- `src/main/java/edu/uoc`
+  - `Main.java` — CLI entry point
+  - `db`
+    - `Database.java` — JDBC connection helper
+  - `model` — Domain models (1:1 with DB tables)
+    - `Customer.java`
+    - `Reservation.java`
+    - `Table.java`
+  - `dto` — Read-only DTOs for listing views
+    - `ReservationListItem.java`
+  - `dao` — Data Access Objects (JDBC)
+    - `CustomerDao.java`
+    - `ReservationDao.java`
+    - `TableDao.java`
+    - `ReservationTableDao.java`
 
 ---
 
-## Database
+## Domain model overview
 
-This project uses **PostgreSQL** with a normalized relational schema.
+The Java model mirrors the database schema:
 
-The database models a restaurant reservation domain with the following entities:
+- **Customer**
+  - id, fullName, phone, email, createdAt
 
-- customers
-- reservations
-- physical restaurant tables
-- reservation–table mapping (many-to-many)
+- **Reservation**
+  - reservationId, customerId
+  - startAt, endAt
+  - partySize, status, notes
+  - createdAt
 
-The schema enforces data integrity using:
+- **Table**
+  - id, code, capacity, active
 
-- primary keys
-- foreign keys
-- NOT NULL, CHECK, and UNIQUE constraints
-
-Business rules such as availability checks, overlapping reservations, or capacity validation are intentionally not implemented yet and will be introduced progressively.
-
----
-
-## Configuration (Environment Variables)
-
-Database credentials are not stored in code.
-
-The application expects the following environment variables:
-
-- DB_URL  
-  Example: jdbc:postgresql://localhost:5432/uoc_databases
-
-- DB_USER  
-  Example: postgres
-
-- DB_PASSWORD  
-  Your PostgreSQL password
-
-### IntelliJ
-
-Set them in:  
-Run → Edit Configurations → Environment variables
-
-### PowerShell (temporary)
-
-- `$Env:DB_URL="jdbc:postgresql://localhost:5432/uoc_databases"`
-- `$Env:DB_USER="postgres"`
-- `$Env:DB_PASSWORD="your_password"`
+Relationships are handled explicitly through DAOs and IDs, not via ORM magic.
 
 ---
 
-## Running the Project
+## DAO layer responsibilities
 
-Using the Gradle wrapper:
+Each DAO is responsible for **one table only**:
 
-- `.\gradlew.bat run`
+- **CustomerDao**
+  - insert customers
+  - find all / find by id
 
-Or run `Main` directly from IntelliJ.
+- **ReservationDao**
+  - insert reservations
+  - list reservations joined with customers
+  - map timestamps to `OffsetDateTime`
 
----
+- **TableDao**
+  - read physical restaurant tables
+  - lookup by id or table code
 
-## What This Project Covers
+- **ReservationTableDao**
+  - manage the many-to-many relationship
+  - assign tables to reservations
+  - designed to support transaction reuse
 
-Currently implemented features:
-
-- JDBC connection to PostgreSQL
-- DAO-based data access layer
-- Customer management (list, insert, find by ID)
-- Reservation creation and listing
-- Use of foreign keys and constraints
-- Safe SQL using PreparedStatement
-- Explicit mapping from SQL rows to Java objects
-- Proper resource management using try-with-resources
-- CLI-based interaction for learning and debugging
-
----
-
-## What Comes Next
-
-Planned next steps:
-
-- Assigning physical tables to reservations
-- Availability and capacity logic
-- Transactions spanning multiple DAO operations
-- Improved CLI flow (find-or-create customer)
-- Error handling and validation improvements
-- Preparing the backend to serve a web or API layer
+DAOs do **not** contain business rules. They only persist and retrieve data.
 
 ---
 
-## Notes
+## CLI (Main.java)
 
-- This project intentionally avoids frameworks (Spring, JPA) at first
-- The goal is understanding and correctness, not speed
-- All database access is explicit to make behavior visible
-- Once the fundamentals are clear, migrating to Spring/JPA becomes much easier
+The CLI is intentionally simple and synchronous.  
+It exists to **exercise the DAOs**, not to be a real user interface.
+
+Current capabilities:
+
+- list customers
+- add customers
+- list reservations
+- add reservations (with optional end time and notes)
+- list physical tables
+- assign tables to an existing reservation
+- inspect table assignments for a reservation
+
+This makes it easy to validate each layer independently.
 
 ---
 
-## License
+## Transaction awareness (important)
 
-Educational use only.
+The project is **prepared** for transaction-safe operations:
+
+- DAOs expose methods that accept an existing `Connection`
+- This allows future service methods to:
+  - disable auto-commit
+  - coordinate multiple DAOs
+  - commit or rollback atomically
+
+At this stage, there is **no service layer yet**.  
+That is intentional and comes next.
+
+---
+
+## What is intentionally NOT implemented yet
+
+This is a backbone project. The following are deliberately deferred:
+
+- transaction-safe “create reservation + assign tables” service
+- table availability checks
+- prevention of overlapping reservations
+- capacity optimization rules
+- automatic table assignment
+- REST API or UI
+
+These will be layered **on top** of this backbone.
+
+---
+
+## Database dependency
+
+This project expects the companion PostgreSQL database project **uoc-reservations-db** to be:
+
+- created
+- seeded
+- running
+
+Database access is configured via environment variables (see `Database.java`).
+
+---
+
+## Why no frameworks?
+
+This is a learning-oriented project.
+
+Using raw JDBC here helps to:
+
+- understand what frameworks abstract away
+- reason about SQL execution
+- debug database interactions confidently
+
+Frameworks can be added later **after** the fundamentals are solid.
+
+---
+
+## Status
+
+This repository represents a **stable JDBC backbone**.
+
+It is suitable as:
+
+- a reference implementation
+- a base for further coursework
+- a starting point for more advanced architectures
+
+---
+
+### Next step
+
+After committing this README, the project will be **frozen as a backbone version** (tag + branch) before introducing the service layer.
+
