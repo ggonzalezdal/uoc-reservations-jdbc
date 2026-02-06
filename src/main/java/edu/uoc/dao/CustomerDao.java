@@ -9,14 +9,13 @@ import java.sql.ResultSet;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
-
 import java.util.Optional;
 
 public class CustomerDao {
 
     public List<Customer> findAll() {
         String sql = """
-            SELECT customer_id, full_name, email, created_at
+            SELECT customer_id, full_name, phone, email, created_at
             FROM customers
             ORDER BY customer_id
             """;
@@ -32,6 +31,7 @@ public class CustomerDao {
                 customers.add(new Customer(
                         rs.getLong("customer_id"),
                         rs.getString("full_name"),
+                        rs.getString("phone"),
                         rs.getString("email"),
                         rs.getObject("created_at", OffsetDateTime.class)
                 ));
@@ -43,10 +43,10 @@ public class CustomerDao {
         return customers;
     }
 
-    public long insert(String fullName, String email) {
+    public long insert(String fullName, String phone, String email) {
         String sql = """
-        INSERT INTO customers (full_name, email)
-        VALUES (?, ?)
+        INSERT INTO customers (full_name, phone, email)
+        VALUES (?, ?, ?)
         RETURNING customer_id
         """;
 
@@ -55,7 +55,8 @@ public class CustomerDao {
                 PreparedStatement stmt = conn.prepareStatement(sql)
         ) {
             stmt.setString(1, fullName);
-            stmt.setString(2, email);
+            stmt.setString(2, phone);     // NOT NULL in DB
+            stmt.setString(3, email);     // may be null
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -72,7 +73,7 @@ public class CustomerDao {
 
     public Optional<Customer> findById(long id) {
         String sql = """
-        SELECT customer_id, full_name, email, created_at
+        SELECT customer_id, full_name, phone, email, created_at
         FROM customers
         WHERE customer_id = ?
         """;
@@ -88,6 +89,7 @@ public class CustomerDao {
                     Customer customer = new Customer(
                             rs.getLong("customer_id"),
                             rs.getString("full_name"),
+                            rs.getString("phone"),
                             rs.getString("email"),
                             rs.getObject("created_at", OffsetDateTime.class)
                     );
@@ -101,6 +103,5 @@ public class CustomerDao {
             throw new RuntimeException("Error fetching customer with id " + id, e);
         }
     }
-
-
 }
+

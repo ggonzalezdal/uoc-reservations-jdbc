@@ -2,6 +2,8 @@ package edu.uoc;
 
 import edu.uoc.dao.CustomerDao;
 import edu.uoc.dao.ReservationDao;
+import edu.uoc.dao.ReservationTableDao;
+import edu.uoc.dao.TableDao;
 import edu.uoc.db.Database;
 import edu.uoc.model.Customer;
 import edu.uoc.model.Reservation;
@@ -13,6 +15,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Scanner;
@@ -58,7 +61,7 @@ public class Main {
         CustomerDao dao = new CustomerDao();
 
         // INSERT demo
-        long id = dao.insert("Gordon Ramsay", "gordon@kitchen.com");
+        long id = dao.insert("Gordon Ramsay", "+34 600 999 999", "gordon@kitchen.com");
         System.out.println("Inserted customer with id = " + id);
 
         // FIND ALL demo
@@ -81,6 +84,9 @@ public class Main {
     private static void runMenu() {
         CustomerDao customerDao = new CustomerDao();
         ReservationDao reservationDao = new ReservationDao();
+        TableDao tableDao = new TableDao();
+        ReservationTableDao reservationTableDao = new ReservationTableDao();
+
         Scanner sc = new Scanner(System.in);
 
         while (true) {
@@ -94,6 +100,12 @@ public class Main {
 
                 case 4 -> listReservations(reservationDao);
                 case 5 -> addReservation(reservationDao, sc);
+
+                case 6 -> listTables(tableDao);
+
+                case 7 -> showReservationAssignments(reservationTableDao, sc);
+
+                case 8 -> assignTablesToReservation(tableDao, reservationTableDao, sc);
 
                 case 0 -> {
                     System.out.println("Bye!");
@@ -119,6 +131,15 @@ public class Main {
         System.out.println("4) List reservations");
         System.out.println("5) Add reservation");
         System.out.println();
+        System.out.println("Tables");
+        System.out.println("6) List tables");
+        System.out.println();
+        System.out.println("Assignments");
+        System.out.println("7) Show table assignments for reservation");
+
+        System.out.println("8) Assign tables to reservation");
+
+        System.out.println();
         System.out.println("0) Exit");
     }
 
@@ -142,13 +163,21 @@ public class Main {
             return;
         }
 
+        System.out.print("Phone (required): ");
+        String phone = sc.nextLine().trim();
+
+        if (phone.isBlank()) {
+            System.out.println("Phone cannot be empty.");
+            return;
+        }
+
         System.out.print("Email (optional, press Enter to skip): ");
         String email = sc.nextLine().trim();
         if (email.isBlank()) {
             email = null;
         }
 
-        long newId = dao.insert(fullName, email);
+        long newId = dao.insert(fullName, phone, email);
         System.out.println("Customer inserted with id = " + newId);
     }
 
@@ -178,16 +207,92 @@ public class Main {
 
         long customerId = readLong(sc, "Customer ID: ");
         OffsetDateTime startAt = readDateTime(sc, "Start (yyyy-MM-dd HH:mm): ");
+
+        System.out.print("End (optional, yyyy-MM-dd HH:mm, Enter to skip): ");
+        String endInput = sc.nextLine().trim();
+        OffsetDateTime endAt = null;
+        if (!endInput.isBlank()) {
+            // reuse same parsing rules as readDateTime
+            endAt = parseDateTime(endInput);
+            if (endAt == null) {
+                System.out.println("Invalid end format. Use: yyyy-MM-dd HH:mm (example: 2026-02-21 22:30)");
+                return;
+            }
+        }
+
         int partySize = readInt(sc, "Party size: ");
 
-        System.out.print("Status [PENDING/CONFIRMED/CANCELLED] (Enter for PENDING): ");
+        System.out.print("Status [PENDING/CONFIRMED/CANCELLED/NO_SHOW] (Enter for PENDING): ");
         String statusInput = sc.nextLine().trim();
         String status = statusInput.isBlank() ? "PENDING" : statusInput.toUpperCase();
 
-        Reservation r = new Reservation(customerId, startAt, partySize, status);
+        // Minimal validation against DB CHECK to avoid obvious runtime errors
+        if (!isValidStatus(status)) {
+            System.out.println("Invalid status. Allowed: PENDING, CONFIRMED, CANCELLED, NO_SHOW.");
+            return;
+        }
+
+        System.out.print("Notes (optional, Enter to skip): ");
+        String notes = sc.nextLine().trim();
+        if (notes.isBlank()) notes = null;
+
+        Reservation r = new Reservation(customerId, startAt, endAt, partySize, status, notes);
         long id = dao.insert(r);
 
         System.out.println("Reservation inserted with id = " + id);
+    }
+
+    private static void listTables(TableDao dao) {
+        var tables = dao.findAll();
+
+        if (tables.isEmpty()) {
+            System.out.println("No tables found.");
+            return;
+        }
+
+        tables.forEach(System.out::println);
+    }
+
+    private static void showReservationAssignments(ReservationTableDao dao, Scanner sc) {
+        long reservationId = readLong(sc, "Reservation ID: ");
+        var tableIds = dao.findTableIdsByReservationId(reservationId);
+
+        if (tableIds.isEmpty()) {
+            System.out.println("No tables assigned to this reservation.");
+            return;
+        }
+
+        System.out.println("Assigned table_ids: " + tableIds);
+    }
+
+    private static void assignTablesToReservation(TableDao tableDao, ReservationTableDao rtDao, Scanner sc) {
+        long reservationId = readLong(sc, "Reservation ID: ");
+
+        System.out.print("Table codes (comma-separated, e.g. T1,T4): ");
+        String input = sc.nextLine().trim();
+
+        if (input.isBlank()) {
+            System.out.println("No table codes provided.");
+            return;
+        }
+
+        String[] parts = input.split(",");
+        List<Long> tableIds = new ArrayList<>();
+
+        for (String p : parts) {
+            String code = p.trim().toUpperCase();
+            if (code.isBlank()) continue;
+
+            var tableOpt = tableDao.findByCode(code);
+            if (tableOpt.isEmpty()) {
+                System.out.println("Unknown table code: " + code);
+                return; // stop, keep it strict for now
+            }
+            tableIds.add(tableOpt.get().getId());
+        }
+
+        rtDao.addAssignments(reservationId, tableIds);
+        System.out.println("Assigned tables to reservation " + reservationId + ": " + input);
     }
 
     // ===== Input helpers =====
@@ -232,4 +337,23 @@ public class Main {
             }
         }
     }
+
+    private static OffsetDateTime parseDateTime(String input) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+        ZoneId zone = ZoneId.systemDefault();
+        try {
+            LocalDateTime ldt = LocalDateTime.parse(input, fmt);
+            return ldt.atZone(zone).toOffsetDateTime();
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    private static boolean isValidStatus(String status) {
+        return status.equals("PENDING")
+                || status.equals("CONFIRMED")
+                || status.equals("CANCELLED")
+                || status.equals("NO_SHOW");
+    }
+
 }
