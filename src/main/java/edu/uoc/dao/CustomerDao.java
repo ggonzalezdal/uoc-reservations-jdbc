@@ -103,5 +103,30 @@ public class CustomerDao {
             throw new RuntimeException("Error fetching customer with id " + id, e);
         }
     }
+
+    /**
+     * Checks whether a customer exists by id.
+     * Transaction-aware: uses the provided Connection.
+     */
+    public boolean existsById(Connection conn, long customerId) {
+        String sql = """
+        SELECT 1
+        FROM customers
+        WHERE customer_id = ?
+        LIMIT 1
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, customerId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error checking existence of customer " + customerId, e);
+        }
+    }
+
 }
 

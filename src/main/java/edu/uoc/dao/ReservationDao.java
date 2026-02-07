@@ -72,18 +72,19 @@ public class ReservationDao {
     }
 
     /**
-     * Inserts a reservation and returns the generated reservation_id.
-     * Also sets the generated id back into the Reservation object.
+     * Inserts a reservation using the provided Connection (transaction-aware).
+     * Returns the generated reservation_id and sets reservationId + createdAt into the Reservation object.
+     *
+     * Note: This method does NOT commit/rollback. The caller controls the transaction.
      */
-    public long insert(Reservation r) {
+    public long insert(Connection conn, Reservation r) {
         String sql = """
-            INSERT INTO reservations (customer_id, start_at, end_at, party_size, status, notes)
-            VALUES (?, ?, ?, ?, ?, ?)
-            RETURNING reservation_id, created_at
-            """;
+        INSERT INTO reservations (customer_id, start_at, end_at, party_size, status, notes)
+        VALUES (?, ?, ?, ?, ?, ?)
+        RETURNING reservation_id, created_at
+        """;
 
-        try (Connection conn = Database.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setLong(1, r.getCustomerId());
             ps.setObject(2, r.getStartAt());   // OffsetDateTime -> timestamptz
@@ -107,6 +108,56 @@ public class ReservationDao {
 
         } catch (SQLException e) {
             throw new RuntimeException("Failed to insert reservation", e);
+        }
+    }
+
+    /**
+     * Backwards-compatible convenience method (non-transactional).
+     * Opens its own connection.
+     */
+    public long insert(Reservation r) {
+        try (Connection conn = Database.getConnection()) {
+            return insert(conn, r);
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to insert reservation", e);
+        }
+    }
+
+    public boolean anyOverlappingForTables(Connection conn,
+                                           List<Long> tableIds,
+                                           OffsetDateTime startAt,
+                                           OffsetDateTime endAt) {
+
+        if (tableIds == null || tableIds.isEmpty()) {
+            return false; // no tables => nothing can overlap
+        }
+
+        String sql = """
+        SELECT 1
+        FROM reservation_tables rt
+        JOIN reservations r ON r.reservation_id = rt.reservation_id
+        WHERE rt.table_id = ANY (?::bigint[])
+          AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
+          AND r.start_at < ?
+          AND ? < COALESCE(r.end_at, r.start_at + interval '2 hours')
+        LIMIT 1
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            // tableIds -> BIGINT[] parameter
+            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray()));
+
+            // overlap conditions
+            ps.setObject(2, endAt);    // existingStart < newEnd
+            ps.setObject(3, startAt);  // newStart < existingEnd
+
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next(); // if any row found => overlap exists
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error checking overlap for tableIds " + tableIds, e);
         }
     }
 }

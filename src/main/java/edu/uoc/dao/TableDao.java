@@ -100,5 +100,37 @@ public class TableDao {
             throw new RuntimeException("Error fetching table with code " + code, e);
         }
     }
+
+    /**
+     * Checks whether ALL given tableIds exist and are active.
+     * Transaction-aware: uses the provided Connection.
+     */
+    public boolean allActiveExistByIds(Connection conn, List<Long> tableIds) {
+        if (tableIds == null || tableIds.isEmpty()) {
+            return false;
+        }
+
+        String sql = """
+        SELECT COUNT(*) AS cnt
+        FROM tables
+        WHERE active = true
+          AND table_id = ANY (?::bigint[])
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray()));
+
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                long cnt = rs.getLong("cnt");
+                return cnt == tableIds.size();
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error checking table ids " + tableIds, e);
+        }
+    }
+
 }
 
