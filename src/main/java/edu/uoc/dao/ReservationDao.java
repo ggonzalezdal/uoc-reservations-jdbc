@@ -10,7 +10,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class ReservationDao {
 
@@ -172,4 +174,44 @@ public class ReservationDao {
             throw new RuntimeException("Failed to check overlapping reservations", e);
         }
     }
+
+    public Set<Long> findOverlappingTableIds(
+            Connection conn,
+            List<Long> tableIds,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt
+    ) {
+        if (tableIds == null || tableIds.isEmpty()) {
+            return Set.of();
+        }
+
+        String sql = """
+        SELECT DISTINCT rt.table_id
+        FROM reservation_tables rt
+        JOIN reservations r ON r.reservation_id = rt.reservation_id
+        WHERE rt.table_id = ANY (?::bigint[])
+          AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
+          AND r.start_at < ?
+          AND ? < COALESCE(r.end_at, r.start_at + interval '2 hours')
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray(new Long[0])));
+            ps.setObject(2, endAt);
+            ps.setObject(3, startAt);
+
+            Set<Long> blocked = new HashSet<>();
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    blocked.add(rs.getLong("table_id"));
+                }
+            }
+            return blocked;
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to find overlapping table ids", e);
+        }
+    }
+
 }

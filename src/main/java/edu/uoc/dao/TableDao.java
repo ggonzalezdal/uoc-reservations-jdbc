@@ -6,6 +6,7 @@ import edu.uoc.model.Table;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -131,6 +132,44 @@ public class TableDao {
             throw new RuntimeException("Error checking table ids " + tableIds, e);
         }
     }
+
+    public List<Table> findAllActive(Connection conn) {
+        String sql = """
+        SELECT table_id, table_code, capacity, active
+        FROM tables
+        WHERE active = true
+        ORDER BY table_code
+        """;
+
+        List<Table> tables = new ArrayList<>();
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                tables.add(new Table(
+                        rs.getLong("table_id"),
+                        rs.getString("table_code"),
+                        rs.getInt("capacity"),
+                        rs.getBoolean("active")
+                ));
+            }
+
+            return tables;
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Error fetching active tables", e);
+        }
+    }
+
+    public List<Table> findAllActive() {
+        try (Connection conn = Database.getConnection()) {
+            return findAllActive(conn);
+        } catch (SQLException e) {
+            throw new RuntimeException("Error fetching active tables", e);
+        }
+    }
+
 
 }
 
