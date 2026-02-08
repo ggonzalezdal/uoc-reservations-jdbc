@@ -146,7 +146,7 @@ public class ReservationDao {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
 
             // tableIds -> BIGINT[] parameter
-            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray()));
+            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray(new Long[0])));
 
             // overlap conditions
             ps.setObject(2, endAt);    // existingStart < newEnd
@@ -158,6 +158,18 @@ public class ReservationDao {
 
         } catch (Exception e) {
             throw new RuntimeException("Error checking overlap for tableIds " + tableIds, e);
+        }
+    }
+
+    public boolean anyOverlappingForTables(
+            List<Long> tableIds,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt
+    ) {
+        try (Connection conn = Database.getConnection()) {
+            return anyOverlappingForTables(conn, tableIds, startAt, endAt);
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to check overlapping reservations", e);
         }
     }
 }
