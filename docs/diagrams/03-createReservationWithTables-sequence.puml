@@ -1,0 +1,78 @@
+@startuml
+title 03 — Sequence Diagram — createReservationWithTables()
+
+hide footbox
+skinparam shadowing false
+
+actor "CLI / Main" as Main
+participant "ReservationService" as Service
+participant "Database" as DB
+participant "CustomerDao" as CustomerDao
+participant "TableDao" as TableDao
+participant "ReservationDao" as ReservationDao
+participant "ReservationTableDao" as RTDao
+
+Main -> Service : createReservationWithTables(\n customerId, startAt, endAt?, partySize,\n status?, notes?, tableIds)
+
+activate Service
+
+' --- Business rule: default endAt ---
+alt endAt is null
+  Service -> Service : endAt = startAt + 2 hours
+end
+
+' --- Begin transaction ---
+Service -> DB : getConnection()
+DB --> Service : Connection conn
+Service -> Service : conn.setAutoCommit(false)
+
+group Validation (transaction-aware)
+  Service -> CustomerDao : existsById(conn, customerId)
+  CustomerDao --> Service : boolean
+
+  alt customer does NOT exist
+    Service -> Service : throw IllegalArgumentException
+    Service -> Service : conn.rollback()
+    Service -> Service : conn.setAutoCommit(true)
+    deactivate Service
+    return
+  end
+
+  Service -> TableDao : allActiveExistByIds(conn, tableIds)
+  TableDao --> Service : boolean
+
+  alt tables invalid/inactive
+    Service -> Service : throw IllegalArgumentException
+    Service -> Service : conn.rollback()
+    Service -> Service : conn.setAutoCommit(true)
+    deactivate Service
+    return
+  end
+
+  Service -> ReservationDao : anyOverlappingForTables(\nconn, tableIds, startAt, endAt)
+  ReservationDao --> Service : boolean
+
+  alt overlap exists (tables not available)
+    Service -> Service : throw IllegalStateException
+    Service -> Service : conn.rollback()
+    Service -> Service : conn.setAutoCommit(true)
+    deactivate Service
+    return
+  end
+end
+
+group Persistence (single transaction)
+  Service -> ReservationDao : insert(conn, Reservation)
+  ReservationDao --> Service : reservationId
+
+  Service -> RTDao : addAssignments(conn, reservationId, tableIds)
+  RTDao --> Service : void
+
+  Service -> Service : conn.commit()
+end
+
+Service -> Service : conn.setAutoCommit(true)
+Service --> Main : reservationId
+
+deactivate Service
+@enduml

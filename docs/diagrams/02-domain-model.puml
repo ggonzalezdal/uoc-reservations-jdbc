@@ -1,0 +1,55 @@
+@startuml
+title 02 — Domain Model (Class Diagram) — Reservations
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+
+' ===== Domain entities =====
+class Customer <<Entity>> {
+  - customerId : long
+  - fullName   : String
+  - phone      : String
+  - email      : String
+  - createdAt  : OffsetDateTime
+}
+
+class Reservation <<Entity>> {
+  - reservationId : long
+  - customerId    : long
+  - startAt       : OffsetDateTime
+  - endAt         : OffsetDateTime
+  - partySize     : int
+  - status        : String
+  - notes         : String
+  - createdAt     : OffsetDateTime
+}
+
+class Table <<Entity>> {
+  - tableId   : long
+  - tableCode : String
+  - capacity  : int
+  - active    : boolean
+}
+
+' ===== Relationships (UOC-friendly) =====
+Customer "1" --> "0..*" Reservation : makes
+
+' Many-to-many (conceptual)
+Reservation "1..*" -- "0..*" Table : assigned
+
+note on link
+  Implemented in DB with association table:
+  reservation_tables(reservation_id, table_id)
+end note
+
+note right of Reservation
+  Business rule (service):
+  if endAt is null -> startAt + 2 hours
+end note
+
+note right of Table
+  'active' indicates whether a physical table
+  can be used for new reservations.
+end note
+
+@enduml

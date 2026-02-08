@@ -7,6 +7,7 @@ import edu.uoc.dao.TableDao;
 import edu.uoc.db.Database;
 import edu.uoc.model.Customer;
 import edu.uoc.model.Reservation;
+import edu.uoc.service.ReservationService;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -86,6 +87,7 @@ public class Main {
         ReservationDao reservationDao = new ReservationDao();
         TableDao tableDao = new TableDao();
         ReservationTableDao reservationTableDao = new ReservationTableDao();
+        ReservationService reservationService = new ReservationService();
 
         Scanner sc = new Scanner(System.in);
 
@@ -106,6 +108,8 @@ public class Main {
                 case 7 -> showReservationAssignments(reservationTableDao, sc);
 
                 case 8 -> assignTablesToReservation(tableDao, reservationTableDao, sc);
+
+                case 9 -> createReservationWithTables(reservationService, tableDao, sc);
 
                 case 0 -> {
                     System.out.println("Bye!");
@@ -138,6 +142,7 @@ public class Main {
         System.out.println("7) Show table assignments for reservation");
 
         System.out.println("8) Assign tables to reservation");
+        System.out.println("9) Create reservation + assign tables (transaction-safe)");
 
         System.out.println();
         System.out.println("0) Exit");
@@ -276,6 +281,7 @@ public class Main {
             return;
         }
 
+
         String[] parts = input.split(",");
         List<Long> tableIds = new ArrayList<>();
 
@@ -293,6 +299,84 @@ public class Main {
 
         rtDao.addAssignments(reservationId, tableIds);
         System.out.println("Assigned tables to reservation " + reservationId + ": " + input);
+    }
+
+    private static void createReservationWithTables(ReservationService service, TableDao tableDao, Scanner sc) {
+        System.out.println("=== Create reservation + assign tables (transaction-safe) ===");
+
+        long customerId = readLong(sc, "Customer ID: ");
+        OffsetDateTime startAt = readDateTime(sc, "Start (yyyy-MM-dd HH:mm): ");
+
+        System.out.print("End (optional, yyyy-MM-dd HH:mm, Enter to skip -> defaults to +2 hours): ");
+        String endInput = sc.nextLine().trim();
+        OffsetDateTime endAt = null;
+        if (!endInput.isBlank()) {
+            endAt = parseDateTime(endInput);
+            if (endAt == null) {
+                System.out.println("Invalid end format. Use: yyyy-MM-dd HH:mm (example: 2026-02-21 22:30)");
+                return;
+            }
+        }
+
+        int partySize = readInt(sc, "Party size: ");
+
+        System.out.print("Status [PENDING/CONFIRMED/CANCELLED/NO_SHOW] (Enter for PENDING): ");
+        String statusInput = sc.nextLine().trim();
+        String status = statusInput.isBlank() ? null : statusInput.toUpperCase();
+
+        if (status != null && !isValidStatus(status)) {
+            System.out.println("Invalid status. Allowed: PENDING, CONFIRMED, CANCELLED, NO_SHOW.");
+            return;
+        }
+
+        System.out.print("Notes (optional, Enter to skip): ");
+        String notes = sc.nextLine().trim();
+        if (notes.isBlank()) notes = null;
+
+        System.out.print("Table codes (comma-separated, e.g. T1,T4): ");
+        String input = sc.nextLine().trim();
+
+        if (input.isBlank()) {
+            System.out.println("No table codes provided.");
+            return;
+        }
+
+        String[] parts = input.split(",");
+        List<Long> tableIds = new ArrayList<>();
+
+        for (String p : parts) {
+            String code = p.trim().toUpperCase();
+            if (code.isBlank()) continue;
+
+            var tableOpt = tableDao.findByCode(code);
+            if (tableOpt.isEmpty()) {
+                System.out.println("Unknown table code: " + code);
+                return; // strict for now
+            }
+
+            tableIds.add(tableOpt.get().getId());
+        }
+
+        try {
+            long reservationId = service.createReservationWithTables(
+                    customerId,
+                    startAt,
+                    endAt,     // service will default to +2h if null
+                    partySize,
+                    status,    // service will default to PENDING if null/blank
+                    notes,
+                    tableIds
+            );
+
+            System.out.println("[OK] Reservation created with id = " + reservationId);
+            System.out.println("[OK] Assigned tables: " + input);
+
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            // Expected business validation errors (customer missing, tables invalid, overlap)
+            System.out.println("[ERROR] Cannot create reservation: " + e.getMessage());
+        } catch (Exception e) {
+            System.out.println("[ERROR] Unexpected error: " + e.getMessage());
+        }
     }
 
     // ===== Input helpers =====

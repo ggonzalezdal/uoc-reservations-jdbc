@@ -1,0 +1,65 @@
+@startuml
+title 04 — ERD (PostgreSQL Schema) — uoc-reservations-jdbc
+
+hide methods
+hide stereotypes
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+' ===== Tables =====
+
+entity "customers" as customers {
+  *customer_id : BIGSERIAL <<PK>>
+  --
+  full_name  : VARCHAR(100) <<NN>>
+  phone      : VARCHAR(30)  <<NN, UQ>>
+  email      : VARCHAR(255) <<UQ>>
+  created_at : TIMESTAMPTZ  <<NN>>
+}
+
+entity "tables" as tables {
+  *table_id   : BIGSERIAL <<PK>>
+  --
+  table_code  : VARCHAR(10) <<NN, UQ>>
+  capacity    : INT         <<NN>>
+  active      : BOOLEAN     <<NN>>
+}
+
+entity "reservations" as reservations {
+  *reservation_id : BIGSERIAL <<PK>>
+  --
+  customer_id : BIGINT      <<NN, FK>>
+  start_at    : TIMESTAMPTZ <<NN>>
+  end_at      : TIMESTAMPTZ <<NULL>>
+  party_size  : INT         <<NN>>
+  status      : VARCHAR(20) <<NN>>
+  notes       : TEXT        <<NULL>>
+  created_at  : TIMESTAMPTZ <<NN>>
+}
+
+entity "reservation_tables" as reservation_tables {
+  *reservation_id : BIGINT <<PK, FK>>
+  *table_id       : BIGINT <<PK, FK>>
+}
+
+' ===== Relationships / Cardinalities =====
+customers ||--o{ reservations : "customer_id"
+
+reservations ||--o{ reservation_tables : "reservation_id"
+tables       ||--o{ reservation_tables : "table_id"
+
+note right of reservations
+  chk_reservation_time_window:
+  end_at IS NULL OR end_at > start_at
+
+  chk_reservation_status:
+  status IN (PENDING, CONFIRMED, CANCELLED, NO_SHOW)
+end note
+
+note right of reservation_tables
+  PK(reservation_id, table_id)
+  FK reservation_id -> reservations(reservation_id) ON DELETE CASCADE
+  FK table_id -> tables(table_id)
+end note
+
+@enduml

@@ -1,0 +1,61 @@
+@startuml
+title 01 — Layered Architecture (DAO + Service) — uoc-reservations-jdbc
+
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+' ===== Layers / Packages =====
+
+package "Presentation / Application" as app {
+  class Main <<Application>>
+}
+
+package "Service Layer" as svc {
+  class ReservationService <<Service>>
+}
+
+package "Data Access Layer (DAO)" as dao {
+  class CustomerDao <<DAO>>
+  class TableDao <<DAO>>
+  class ReservationDao <<DAO>>
+  class ReservationTableDao <<DAO>>
+}
+
+package "Infrastructure" as infra {
+  class Database <<Utility>>
+}
+
+package "Domain Model" as domain {
+  class Customer <<Entity>>
+  class Reservation <<Entity>>
+  class Table <<Entity>>
+}
+
+package "DTO / Projection" as dto {
+  class ReservationListItem <<DTO>>
+}
+
+' ===== Key dependencies (keep minimal) =====
+
+Main --> ReservationService : uses
+
+ReservationService --> CustomerDao : calls
+ReservationService --> TableDao : calls
+ReservationService --> ReservationDao : calls
+ReservationService --> ReservationTableDao : calls
+ReservationService --> Database : opens transaction\n(commit/rollback)
+
+CustomerDao --> Database : getConnection()
+TableDao --> Database : getConnection()
+ReservationDao --> Database : getConnection()
+ReservationTableDao --> Database : getConnection()\n(convenience)
+
+CustomerDao ..> Customer
+TableDao ..> Table
+ReservationDao ..> Reservation
+ReservationDao ..> ReservationListItem
+ReservationTableDao ..> Reservation
+ReservationTableDao ..> Table
+
+@enduml
