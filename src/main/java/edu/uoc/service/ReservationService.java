@@ -8,6 +8,7 @@ import edu.uoc.db.Database;
 import edu.uoc.model.Reservation;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Objects;
@@ -102,6 +103,45 @@ public class ReservationService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to create reservation with tables", e);
         }
-
     }
+
+    /**
+     * Checks whether the given tables are available for a time window.
+     *
+     * Business rules:
+     * - If endAt is null, defaults to startAt + 2 hours
+     * - Tables are unavailable if any overlapping reservation exists
+     * - CANCELLED and NO_SHOW reservations do not block availability
+     *
+     * @return true if tables are available, false otherwise
+     */
+    public boolean isAvailableForTables(
+            List<Long> tableIds,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt
+    ) {
+        if (startAt == null) {
+            throw new IllegalArgumentException("startAt cannot be null");
+        }
+
+        OffsetDateTime effectiveEndAt =
+                (endAt != null) ? endAt : startAt.plusHours(2);
+
+        try (Connection conn = Database.getConnection()) {
+
+            boolean overlapExists =
+                    reservationDao.anyOverlappingForTables(
+                            conn,
+                            tableIds,
+                            startAt,
+                            effectiveEndAt
+                    );
+
+            return !overlapExists;
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to check availability", e);
+        }
+    }
+
 }
