@@ -1,187 +1,176 @@
 # uoc-reservations-jdbc
 
-Educational Java backend project built for the **UOC – Introduction to Databases** course.
+Educational Java backend project built for **UOC – Introduction to Databases**.
 
 This repository implements a **clean JDBC-based backend** for a restaurant reservations domain, designed to understand how Java applications interact with a relational database **without frameworks** (no Spring, no JPA).
 
-It is intentionally structured as a **backbone project**: correct, readable, and extensible, but not yet feature-complete.
+It is intentionally structured as a **backbone project**: correct, readable, and extensible — with clear separation between **DAO**, **Service Layer (behavior)**, and **CLI (presentation)**.
 
 ---
 
-## Purpose of this project
+## What this project covers
 
-The main goals of this project are to:
+### Implemented
+- PostgreSQL schema with:
+  - customers
+  - tables (physical restaurant tables configuration)
+  - reservations
+  - reservation_tables (many-to-many assignment)
+- DAO layer (SQL + mapping):
+  - CRUD-style reads/inserts
+  - transaction-aware DAO methods (shared Connection pattern)
+- Service layer (business behavior):
+  - ReservationService.createReservationWithTables(...)
+  - transaction-safe create reservation + assign tables
+  - default duration rule: if endAt is null → startAt + 2 hours
+  - overlap / availability check for selected tables
+  - clean propagation of business errors (IllegalArgumentException / IllegalStateException)
+- CLI menu:
+  - demo-friendly options for customers, reservations, tables
+  - transaction-safe workflow via option 9
+- Design documentation:
+  - PlantUML diagrams in docs/diagrams
 
-- Understand JDBC at a low level (connections, prepared statements, result sets)
-- Practice clean separation of concerns:
-  - domain models
-  - data access (DAO)
-  - DTOs for read models
-  - application entry point (CLI)
-- Learn how to:
-  - read data from a PostgreSQL database
-  - insert data safely
-  - map relational rows to Java objects
-  - prepare for transaction-safe service layers
-
-This project is designed as a **foundation** for later extensions, not as a final restaurant system.
+### Planned / next iterations
+- Smarter CLI UX (re-prompt only invalid fields)
+- Availability search (list available tables by time window / party size)
+- Capacity-aware automatic table selection
+- Update table configuration (tables.active) from CLI/admin flows
+- Reservation updates (cancel / reschedule)
 
 ---
 
 ## Project structure
 
-- `src/main/java/edu/uoc`
-  - `Main.java` — CLI entry point
-  - `db`
-    - `Database.java` — JDBC connection helper
-  - `model` — Domain models (1:1 with DB tables)
-    - `Customer.java`
-    - `Reservation.java`
-    - `Table.java`
-  - `dto` — Read-only DTOs for listing views
-    - `ReservationListItem.java`
-  - `dao` — Data Access Objects (JDBC)
-    - `CustomerDao.java`
-    - `ReservationDao.java`
-    - `TableDao.java`
-    - `ReservationTableDao.java`
+src/main/java/edu/uoc
+- db        Database connection (env-based)
+- model     Domain entities (Customer, Reservation, Table)
+- dto       Read projections (ReservationListItem)
+- dao       DAOs (SQL + mapping, transaction-aware)
+- service   Service layer (business behavior + transactions)
+- Main.java CLI entry point
+
+docs
+- diagrams  PlantUML diagrams (architecture, domain, sequence, ERD)
 
 ---
 
-## Domain model overview
-
-The Java model mirrors the database schema:
-
-- **Customer**
-  - id, fullName, phone, email, createdAt
-
-- **Reservation**
-  - reservationId, customerId
-  - startAt, endAt
-  - partySize, status, notes
-  - createdAt
-
-- **Table**
-  - id, code, capacity, active
-
-Relationships are handled explicitly through DAOs and IDs, not via ORM magic.
+## Requirements
+- Java JDK 17 or higher
+- PostgreSQL
+- Gradle wrapper (included)
 
 ---
 
-## DAO layer responsibilities
+## Database setup
 
-Each DAO is responsible for **one table only**:
+1. Create database  
+   Example database name:
+- uoc_databases
 
-- **CustomerDao**
-  - insert customers
-  - find all / find by id
+2. Create tables  
+   Run the DDL script:
+- 01_schema/create_tables.sql
 
-- **ReservationDao**
-  - insert reservations
-  - list reservations joined with customers
-  - map timestamps to `OffsetDateTime`
+This creates:
+- customers
+- tables
+- reservations
+- reservation_tables
 
-- **TableDao**
-  - read physical restaurant tables
-  - lookup by id or table code
-
-- **ReservationTableDao**
-  - manage the many-to-many relationship
-  - assign tables to reservations
-  - designed to support transaction reuse
-
-DAOs do **not** contain business rules. They only persist and retrieve data.
+Note:
+- tables.active models whether a physical table can be used at all (salon configuration)
+- availability at a given time is computed dynamically via reservation overlap logic
 
 ---
 
-## CLI (Main.java)
+## Configuration (Environment Variables)
 
-The CLI is intentionally simple and synchronous.  
-It exists to **exercise the DAOs**, not to be a real user interface.
+The application reads database configuration from environment variables.
 
-Current capabilities:
+Required variables:
+- DB_URL
+- DB_USER
+- DB_PASSWORD
 
+Example DB_URL:
+- jdbc:postgresql://localhost:5432/uoc_databases
+
+---
+
+## Run
+
+From IntelliJ:
+- Run Main
+
+From terminal:
+- ./gradlew run
+
+---
+
+## CLI overview
+
+Customers:
 - list customers
-- add customers
+- add customer
+- find customer by id
+
+Reservations:
 - list reservations
-- add reservations (with optional end time and notes)
-- list physical tables
+- add reservation (basic insert)
+
+Tables:
+- list tables
+
+Assignments:
+- show table assignments for a reservation
 - assign tables to an existing reservation
-- inspect table assignments for a reservation
 
-This makes it easy to validate each layer independently.
-
----
-
-## Transaction awareness (important)
-
-The project is **prepared** for transaction-safe operations:
-
-- DAOs expose methods that accept an existing `Connection`
-- This allows future service methods to:
-  - disable auto-commit
-  - coordinate multiple DAOs
-  - commit or rollback atomically
-
-At this stage, there is **no service layer yet**.  
-That is intentional and comes next.
+Option 9 (recommended):
+- create reservation + assign tables in one transaction
+- validates:
+  - customer exists
+  - tables exist and are active
+  - tables are available (no overlap)
+- commits only if everything succeeds, otherwise rollback
 
 ---
 
-## What is intentionally NOT implemented yet
+## Transaction safety
 
-This is a backbone project. The following are deliberately deferred:
+The service layer owns transaction boundaries:
+- opens one Connection
+- disables auto-commit
+- performs validations and inserts using the same connection
+- commits on success
+- rollbacks on failure
 
-- transaction-safe “create reservation + assign tables” service
-- table availability checks
-- prevention of overlapping reservations
-- capacity optimization rules
-- automatic table assignment
-- REST API or UI
-
-These will be layered **on top** of this backbone.
+DAOs support shared-connection usage so multi-step operations are atomic.
 
 ---
 
-## Database dependency
+## Design diagrams
 
-This project expects the companion PostgreSQL database project **uoc-reservations-db** to be:
+Stored in:
+- docs/diagrams
 
-- created
-- seeded
-- running
-
-Database access is configured via environment variables (see `Database.java`).
-
----
-
-## Why no frameworks?
-
-This is a learning-oriented project.
-
-Using raw JDBC here helps to:
-
-- understand what frameworks abstract away
-- reason about SQL execution
-- debug database interactions confidently
-
-Frameworks can be added later **after** the fundamentals are solid.
+Recommended set:
+1. 01-architecture.puml
+2. 02-domain-model.puml
+3. 03-createReservationWithTables-sequence.puml
+4. 04-erd.puml
 
 ---
 
-## Status
+## Learning goals
 
-This repository represents a **stable JDBC backbone**.
-
-It is suitable as:
-
-- a reference implementation
-- a base for further coursework
-- a starting point for more advanced architectures
+This project is framework-free by design to focus on:
+- relational modeling (PK, FK, constraints)
+- JDBC fundamentals
+- transaction management
+- clean separation of concerns
 
 ---
 
-### Next step
-
-After committing this README, the project will be **frozen as a backbone version** (tag + branch) before introducing the service layer.
-
+## License
+Educational / personal learning project.
