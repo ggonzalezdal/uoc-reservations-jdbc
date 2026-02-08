@@ -6,12 +6,14 @@ import edu.uoc.dao.ReservationTableDao;
 import edu.uoc.dao.TableDao;
 import edu.uoc.db.Database;
 import edu.uoc.model.Reservation;
+import edu.uoc.model.Table;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 public class ReservationService {
 
@@ -141,6 +143,45 @@ public class ReservationService {
 
         } catch (SQLException e) {
             throw new RuntimeException("Failed to check availability", e);
+        }
+    }
+
+    /**
+     * Lists all active tables that are available for the given time window.
+     *
+     * Business rules:
+     * - If endAt is null, defaults to startAt + 2 hours
+     * - Tables are unavailable if they have any overlapping reservation
+     * - CANCELLED and NO_SHOW do not block availability
+     */
+    public List<Table> listAvailableTables(OffsetDateTime startAt, OffsetDateTime endAt) {
+        if (startAt == null) {
+            throw new IllegalArgumentException("startAt cannot be null");
+        }
+
+        OffsetDateTime effectiveEndAt = (endAt != null) ? endAt : startAt.plusHours(2);
+
+        try (Connection conn = Database.getConnection()) {
+
+            // 1) Candidates = active tables
+            List<Table> activeTables = tableDao.findAllActive(conn);
+
+            List<Long> ids = activeTables.stream()
+                    .map(Table::getId)
+                    .toList();
+
+            // 2) Blocked ids = any table with an overlapping reservation
+            Set<Long> blockedIds = reservationDao.findOverlappingTableIds(
+                    conn, ids, startAt, effectiveEndAt
+            );
+
+            // 3) Available = active - blocked
+            return activeTables.stream()
+                    .filter(t -> !blockedIds.contains(t.getId()))
+                    .toList();
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to list available tables", e);
         }
     }
 
