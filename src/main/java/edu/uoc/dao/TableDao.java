@@ -170,6 +170,30 @@ public class TableDao {
         }
     }
 
+    public int sumCapacityByIds(Connection conn, List<Long> tableIds) {
+        if (tableIds == null || tableIds.isEmpty()) {
+            return 0;
+        }
+
+        String sql = """
+        SELECT COALESCE(SUM(capacity), 0) AS total
+        FROM tables
+        WHERE active = true
+          AND table_id = ANY (?::bigint[])
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray(new Long[0])));
+
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getInt("total");
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error summing capacities for table ids " + tableIds, e);
+        }
+    }
 
 }
 

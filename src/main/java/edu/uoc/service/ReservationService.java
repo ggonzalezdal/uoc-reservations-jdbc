@@ -70,6 +70,9 @@ public class ReservationService {
                     throw new IllegalArgumentException("Invalid or inactive table(s): " + tableIds);
                 }
 
+                // 2b) Capacity validation (F5)
+                validateCapacity(conn, tableIds, partySize);
+
                 // 3) Availability (overlap)
                 if (reservationDao.anyOverlappingForTables(conn, tableIds, startAt, endAt)) {
                     throw new IllegalStateException("Selected tables are not available in this time window");
@@ -298,6 +301,80 @@ public class ReservationService {
             throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to confirm reservation", e);
+        }
+    }
+
+    private void validateCapacity(Connection conn, List<Long> tableIds, int partySize) {
+        int totalCapacity = tableDao.sumCapacityByIds(conn, tableIds);
+
+        if (totalCapacity < partySize) {
+            throw new IllegalStateException(
+                    "Insufficient capacity: partySize=" + partySize + ", totalCapacity=" + totalCapacity
+            );
+        }
+    }
+
+    /**
+     * Validated manual assignment (CLI option 8).
+     *
+     * Rules:
+     * - SUM(capacity) >= partySize
+     * - Rejected if reservation status is CANCELLED or NO_SHOW
+     * - Transaction-safe: failure does not modify existing assignments
+     */
+    public void assignTablesToReservationValidated(long reservationId, List<Long> tableIds) {
+
+        if (reservationId <= 0) {
+            throw new IllegalArgumentException("reservationId must be > 0");
+        }
+        if (tableIds == null || tableIds.isEmpty()) {
+            throw new IllegalArgumentException("At least one table must be selected");
+        }
+
+        try (Connection conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try {
+                // Reservation exists + get party size + status
+                var infoOpt = reservationDao.findCapacityInfoById(conn, reservationId);
+                if (infoOpt.isEmpty()) {
+                    throw new IllegalArgumentException("Reservation not found: " + reservationId);
+                }
+
+                var info = infoOpt.get();
+                String status = info.status();
+
+                if ("CANCELLED".equalsIgnoreCase(status) || "NO_SHOW".equalsIgnoreCase(status)) {
+                    throw new IllegalStateException("Cannot assign tables to reservation with status: " + status);
+                }
+
+                // Tables exist and active
+                if (!tableDao.allActiveExistByIds(conn, tableIds)) {
+                    throw new IllegalArgumentException("Invalid or inactive table(s): " + tableIds);
+                }
+
+                // Capacity validation (F5)
+                validateCapacity(conn, tableIds, info.partySize());
+
+                // Optional but strongly recommended: overlap check using reservation start/end window
+                // (We can add this in F6 if you prefer — but capacity-only is OK for F5.)
+
+                // Replace assignments (transaction-safe)
+                reservationTableDao.replaceAssignments(conn, reservationId, tableIds);
+
+                conn.commit();
+
+            } catch (Exception e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to assign tables (validated)", e);
         }
     }
 

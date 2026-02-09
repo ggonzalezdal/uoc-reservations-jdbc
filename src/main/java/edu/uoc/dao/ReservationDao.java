@@ -287,4 +287,36 @@ public class ReservationDao {
         }
     }
 
+    public record ReservationCapacityInfo(int partySize, String status) {}
+
+    public Optional<ReservationCapacityInfo> findCapacityInfoById(
+            Connection conn,
+            long reservationId
+    ) {
+        String sql = """
+        SELECT party_size, status
+        FROM reservations
+        WHERE reservation_id = ?
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, reservationId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return Optional.empty();
+
+                return Optional.of(new ReservationCapacityInfo(
+                        rs.getInt("party_size"),
+                        rs.getString("status")
+                ));
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException(
+                    "Failed to fetch reservation capacity info for id=" + reservationId, e
+            );
+        }
+    }
+
+
 }
