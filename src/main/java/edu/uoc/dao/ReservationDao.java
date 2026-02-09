@@ -9,10 +9,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class ReservationDao {
 
@@ -211,6 +208,59 @@ public class ReservationDao {
 
         } catch (SQLException e) {
             throw new RuntimeException("Failed to find overlapping table ids", e);
+        }
+    }
+
+    /**
+     * Returns the current status for a reservation, or empty if not found.
+     */
+    public Optional<String> findStatusById(Connection conn, long reservationId) {
+        String sql = "SELECT status FROM reservations WHERE reservation_id = ?";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, reservationId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return Optional.empty();
+                return Optional.ofNullable(rs.getString("status"));
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch reservation status for id=" + reservationId, e);
+        }
+    }
+
+    /**
+     * Cancels a reservation (status=CANCELLED) and stores audit fields.
+     *
+     * Idempotent rule:
+     * - If cancelled_at already exists, do NOT overwrite it.
+     * - If cancellation_reason already exists, do NOT overwrite it.
+     *
+     * @return rows updated (0 or 1)
+     */
+    public int cancelById(Connection conn, long reservationId, String reason) {
+        String sql = """
+        UPDATE reservations
+        SET status = 'CANCELLED',
+            cancelled_at = COALESCE(cancelled_at, now()),
+            cancellation_reason = COALESCE(cancellation_reason, ?)
+        WHERE reservation_id = ?
+          AND status <> 'CANCELLED'
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            // Allow NULL if reason is blank/not provided
+            String normalizedReason = (reason == null || reason.isBlank()) ? null : reason.trim();
+
+            ps.setString(1, normalizedReason);
+            ps.setLong(2, reservationId);
+
+            return ps.executeUpdate();
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to cancel reservation id=" + reservationId, e);
         }
     }
 

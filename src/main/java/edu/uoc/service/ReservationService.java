@@ -185,4 +185,59 @@ public class ReservationService {
         }
     }
 
+    /**
+     * Cancels a reservation without deleting historical data.
+     *
+     * Rules:
+     * - status -> CANCELLED
+     * - cancelled_at -> set on first cancellation only
+     * - cancellation_reason -> stored if provided (not overwritten if already set)
+     *
+     * @return true if cancellation happened now, false if it was already cancelled
+     */
+    public boolean cancelReservation(long reservationId, String reason) {
+
+        if (reservationId <= 0) {
+            throw new IllegalArgumentException("reservationId must be > 0");
+        }
+
+        try (Connection conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try {
+                var statusOpt = reservationDao.findStatusById(conn, reservationId);
+
+                if (statusOpt.isEmpty()) {
+                    throw new IllegalArgumentException("Reservation not found: " + reservationId);
+                }
+
+                if ("CANCELLED".equalsIgnoreCase(statusOpt.get())) {
+                    conn.commit(); // nothing to do, but keep transaction style consistent
+                    return false;
+                }
+
+                int updated = reservationDao.cancelById(conn, reservationId, reason);
+
+                // Should be 1 if it existed and wasn't cancelled
+                if (updated != 1) {
+                    throw new IllegalStateException("Cancel failed unexpectedly for reservation: " + reservationId);
+                }
+
+                conn.commit();
+                return true;
+
+            } catch (Exception e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to cancel reservation", e);
+        }
+    }
+
 }
