@@ -264,4 +264,27 @@ public class ReservationDao {
         }
     }
 
+    /**
+     * Confirms a reservation.
+     *
+     * Rule: only PENDING -> CONFIRMED is allowed.
+     *
+     * @return rows updated (0 or 1)
+     */
+    public int confirmById(Connection conn, long reservationId) {
+        String sql = """
+        UPDATE reservations
+        SET status = 'CONFIRMED'
+        WHERE reservation_id = ?
+          AND status = 'PENDING'
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, reservationId);
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to confirm reservation id=" + reservationId, e);
+        }
+    }
+
 }
