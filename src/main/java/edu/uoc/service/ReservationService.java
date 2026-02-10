@@ -11,9 +11,7 @@ import edu.uoc.model.Table;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 public class ReservationService {
 
@@ -378,4 +376,79 @@ public class ReservationService {
         }
     }
 
+    public long createReservationAutoAssignTables(
+            long customerId,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt,
+            int partySize,
+            String status,
+            String notes
+    ) {
+        Objects.requireNonNull(startAt, "startAt cannot be null");
+
+        if (endAt == null) {
+            endAt = startAt.plusHours(2);
+        }
+
+        if (partySize <= 0) {
+            throw new IllegalArgumentException("partySize must be > 0");
+        }
+
+        // 1) Get available tables for the window
+        List<Table> available = listAvailableTables(startAt, endAt);
+
+        // 2) Deterministic sort: smallest capacity first, then code
+        List<Table> sorted = available.stream()
+//                .sorted((a, b) -> {
+//                    int cmp = Integer.compare(a.getCapacity(), b.getCapacity());
+//                    if (cmp != 0) return cmp;
+//                    return a.getCode().compareToIgnoreCase(b.getCode());
+//                })
+
+//                .sorted(Comparator
+//                            .comparingInt(Table::getCapacity)
+//                            .thenComparingInt(t -> Integer.parseInt(t.getCode().substring(1))))
+                .sorted(
+                        Comparator.comparingInt(Table::getCapacity)
+                                .thenComparingInt(t -> extractTableNumber(t.getCode()))
+                                .thenComparing(Table::getCode, String.CASE_INSENSITIVE_ORDER)
+                )
+                .toList();
+
+        // 3) Greedy pick
+        List<Long> chosenIds = new ArrayList<>();
+        int total = 0;
+
+        for (Table t : sorted) {
+            chosenIds.add(t.getId());
+            total += t.getCapacity();
+            if (total >= partySize) break;
+        }
+
+        if (total < partySize) {
+            throw new IllegalStateException("No suitable combination of available tables for partySize=" + partySize);
+        }
+
+        // 4) Reuse your existing transaction-safe creation method
+        return createReservationWithTables(
+                customerId,
+                startAt,
+                endAt,
+                partySize,
+                status,
+                notes,
+                chosenIds
+        );
+    }
+
+    private static int extractTableNumber(String code) {
+        if (code == null) return Integer.MAX_VALUE;
+        String digits = code.replaceAll("\\D+", "");
+        if (digits.isEmpty()) return Integer.MAX_VALUE;
+        try {
+            return Integer.parseInt(digits);
+        } catch (NumberFormatException e) {
+            return Integer.MAX_VALUE;
+        }
+    }
 }
