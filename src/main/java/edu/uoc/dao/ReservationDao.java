@@ -318,5 +318,21 @@ public class ReservationDao {
         }
     }
 
+    public boolean existsById(long reservationId) {
+        String sql = "SELECT 1 FROM reservations WHERE reservation_id = ?";
+
+        try (Connection conn = Database.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setLong(1, reservationId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to check reservation existence: " + reservationId, e);
+        }
+    }
 
 }
