@@ -2,41 +2,100 @@
 
 Educational Java backend project built for **UOC – Introduction to Databases**.
 
-This repository implements a **clean JDBC-based backend** for a restaurant reservations domain, designed to understand how Java applications interact with a relational database **without frameworks** (no Spring, no JPA).
+This repository implements a **clean, framework-free JDBC backend**
+for a restaurant reservation system, designed to deeply understand how
+Java applications interact with a relational database **without Spring or JPA**.
 
-It is intentionally structured as a **backbone project**: correct, readable, and extensible — with clear separation between **DAO**, **Service Layer (behavior)**, and **CLI (presentation)**.
+The project follows a layered architecture with strict separation between:
+
+- **DAO** (persistence, SQL, mapping)
+- **Service layer** (business rules + transactions)
+- **CLI** (presentation / user interaction)
+
+---
+
+## Project status
+
+✅ **Stable and usable**
+
+The project has reached a first complete milestone covering:
+- availability logic
+- reservation lifecycle
+- capacity validation
+- admin configuration
+- improved CLI UX
+
+This state is frozen and published as a GitHub Release.
+
+Further work will build incrementally on top of this foundation.
 
 ---
 
 ## What this project covers
 
-### Implemented
-- PostgreSQL schema with:
-  - customers
-  - tables (physical restaurant tables configuration)
-  - reservations
-  - reservation_tables (many-to-many assignment)
-- DAO layer (SQL + mapping):
-  - CRUD-style reads/inserts
-  - transaction-aware DAO methods (shared Connection pattern)
-- Service layer (business behavior):
-  - ReservationService.createReservationWithTables(...)
-  - transaction-safe create reservation + assign tables
-  - default duration rule: if endAt is null → startAt + 2 hours
-  - overlap / availability check for selected tables
-  - clean propagation of business errors (IllegalArgumentException / IllegalStateException)
-- CLI menu:
-  - demo-friendly options for customers, reservations, tables
-  - transaction-safe workflow via option 9
-- Design documentation:
-  - PlantUML diagrams in docs/diagrams
+### Implemented features
 
-### Planned / next iterations
-- Smarter CLI UX (re-prompt only invalid fields)
-- Availability search (list available tables by time window / party size)
-- Capacity-aware automatic table selection
-- Update table configuration (tables.active) from CLI/admin flows
-- Reservation updates (cancel / reschedule)
+#### Data model
+- PostgreSQL schema:
+  - `customers`
+  - `tables` (physical restaurant tables)
+  - `reservations`
+  - `reservation_tables` (many-to-many assignment)
+- Referential integrity (PK/FK)
+- `tables.active` for physical layout configuration
+
+#### DAO layer
+- SQL-based DAOs (no ORM)
+- Transaction-aware DAO methods
+- Shared `Connection` pattern for atomic operations
+- Read projections via DTOs
+
+#### Service layer (business logic)
+- Transaction-safe reservation creation
+- Default duration rule:
+  - if `endAt` is null → `startAt + 2 hours`
+- Availability / overlap detection
+  - `CANCELLED` and `NO_SHOW` do not block tables
+- Capacity validation:
+  - `SUM(table.capacity) >= partySize`
+- Reservation lifecycle:
+  - confirm (`PENDING → CONFIRMED`)
+  - cancel (history preserved)
+- Manual table assignment with validation
+- Automatic table assignment (greedy strategy)
+- Active-only enforcement:
+  - inactive tables cannot be assigned
+  - inactive tables do not appear in availability searches
+
+#### CLI (presentation)
+- Menu-driven CLI
+- Early validation (fail fast on invalid IDs)
+- Re-prompting for invalid inputs
+- Admin actions:
+  - activate / deactivate tables
+- Transaction-safe workflows exposed via CLI
+
+#### Design documentation
+- PlantUML diagrams stored in `docs/diagrams`
+  - architecture
+  - domain model
+  - sequence diagrams
+  - ERD
+
+---
+
+## Milestones & releases
+
+- **backbone-v1** — initial JDBC skeleton
+- **backbone-v2** — transaction-safe service backbone
+- **milestone-availability-and-ux** — fully usable reservation system
+  - availability engine
+  - capacity validation
+  - lifecycle management
+  - CLI UX improvements
+  - admin configuration
+
+Each milestone is tagged and released on GitHub.
 
 ---
 
@@ -44,133 +103,94 @@ It is intentionally structured as a **backbone project**: correct, readable, and
 
 src/main/java/edu/uoc
 - db        Database connection (env-based)
-- model     Domain entities (Customer, Reservation, Table)
-- dto       Read projections (ReservationListItem)
-- dao       DAOs (SQL + mapping, transaction-aware)
-- service   Service layer (business behavior + transactions)
+- model     Domain entities
+- dto       Read-only projections
+- dao       JDBC DAOs (SQL + mapping)
+- service   Business logic + transactions
 - Main.java CLI entry point
 
-docs
-- diagrams  PlantUML diagrams (architecture, domain, sequence, ERD)
+docs/
+- diagrams  PlantUML diagrams
 
 ---
 
 ## Requirements
-- Java JDK 17 or higher
+
+- Java JDK 17+
 - PostgreSQL
-- Gradle wrapper (included)
+- Gradle Wrapper (included)
 
 ---
 
 ## Database setup
 
 1. Create database  
-   Example database name:
-- uoc_databases
+   Example:
+   uoc_databases
 
 2. Create tables  
-   Run the DDL script:
-- 01_schema/create_tables.sql
+   Run:
+   01_schema/create_tables.sql
 
-This creates:
-- customers
-- tables
-- reservations
-- reservation_tables
+Tables created:
+- `customers`
+- `tables`
+- `reservations`
+- `reservation_tables`
 
-Note:
-- tables.active models whether a physical table can be used at all (salon configuration)
-- availability at a given time is computed dynamically via reservation overlap logic
+Notes:
+- `tables.active` controls whether a table can be used at all
+- Availability is computed dynamically via overlap logic
 
 ---
 
 ## Configuration (Environment Variables)
 
-The application reads database configuration from environment variables.
+Required:
+- `DB_URL`
+- `DB_USER`
+- `DB_PASSWORD`
 
-Required variables:
-- DB_URL
-- DB_USER
-- DB_PASSWORD
-
-Example DB_URL:
-- jdbc:postgresql://localhost:5432/uoc_databases
+Example:
+DB_URL=jdbc:postgresql://localhost:5432/uoc_databases
 
 ---
 
 ## Run
 
 From IntelliJ:
-- Run Main
+- Run `Main`
 
 From terminal:
-- ./gradlew run
+./gradlew run
 
 ---
 
-## CLI overview
+## Transaction model
 
-Customers:
-- list customers
-- add customer
-- find customer by id
+- Transactions are owned by the **service layer**
+- DAOs never commit or rollback
+- Multi-step operations are fully atomic
+- Failures trigger rollback automatically
 
-Reservations:
-- list reservations
-- add reservation (basic insert)
-
-Tables:
-- list tables
-
-Assignments:
-- show table assignments for a reservation
-- assign tables to an existing reservation
-
-Option 9 (recommended):
-- create reservation + assign tables in one transaction
-- validates:
-  - customer exists
-  - tables exist and are active
-  - tables are available (no overlap)
-- commits only if everything succeeds, otherwise rollback
-
----
-
-## Transaction safety
-
-The service layer owns transaction boundaries:
-- opens one Connection
-- disables auto-commit
-- performs validations and inserts using the same connection
-- commits on success
-- rollbacks on failure
-
-DAOs support shared-connection usage so multi-step operations are atomic.
-
----
-
-## Design diagrams
-
-Stored in:
-- docs/diagrams
-
-Recommended set:
-1. 01-architecture.puml
-2. 02-domain-model.puml
-3. 03-createReservationWithTables-sequence.puml
-4. 04-erd.puml
+This mirrors real-world backend design.
 
 ---
 
 ## Learning goals
 
-This project is framework-free by design to focus on:
-- relational modeling (PK, FK, constraints)
+This project intentionally avoids frameworks to focus on:
+
+- relational modeling
 - JDBC fundamentals
-- transaction management
-- clean separation of concerns
+- transaction boundaries
+- business rule enforcement
+- clean architecture
+
+It serves both as a **learning artifact** and a **reference backend**.
 
 ---
 
 ## License
+
 Educational / personal learning project.
