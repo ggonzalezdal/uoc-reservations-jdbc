@@ -4,7 +4,7 @@ Educational Java backend project built for **UOC – Introduction to Databases**
 
 This repository implements a **clean, framework-free JDBC backend**
 for a restaurant reservation system, designed to deeply understand how
-Java applications interact with a relational database **without Spring or JPA**.
+Java applications interact with relational databases **without Spring or JPA**.
 
 The project follows a layered architecture with strict separation between:
 
@@ -101,16 +101,22 @@ Each milestone is tagged and released on GitHub.
 
 ## Project structure
 
-src/main/java/edu/uoc
-- db        Database connection (env-based)
-- model     Domain entities
-- dto       Read-only projections
-- dao       JDBC DAOs (SQL + mapping)
-- service   Business logic + transactions
-- Main.java CLI entry point
-
-docs/
-- diagrams  PlantUML diagrams
+```text
+uoc-reservations-jdbc/
+├─ src/
+│  └─ main/
+│     └─ java/
+│        └─ edu/
+│           └─ uoc/
+│              ├─ db/        # Database connection (env-based)
+│              ├─ model/     # Domain entities (Customer, Reservation, Table)
+│              ├─ dto/       # Read-only projections (query DTOs)
+│              ├─ dao/       # JDBC DAOs (SQL + mapping, tx-aware methods)
+│              ├─ service/   # Business logic + transaction boundaries
+│              └─ Main.java  # CLI entry point
+└─ docs/
+   └─ diagrams/              # PlantUML diagrams (architecture, domain, ERD, sequences)
+```
 
 ---
 
@@ -126,11 +132,15 @@ docs/
 
 1. Create database  
    Example:
+   ```
    uoc_databases
+   ```
 
 2. Create tables  
    Run:
+   ```
    01_schema/create_tables.sql
+   ```
 
 Tables created:
 - `customers`
@@ -152,7 +162,22 @@ Required:
 - `DB_PASSWORD`
 
 Example:
+```bash
 DB_URL=jdbc:postgresql://localhost:5432/uoc_databases
+DB_USER=postgres
+DB_PASSWORD=secret
+```
+
+---
+
+## Quick start
+
+```bash
+export DB_URL=jdbc:postgresql://localhost:5432/uoc_databases
+export DB_USER=postgres
+export DB_PASSWORD=secret
+./gradlew run
+```
 
 ---
 
@@ -162,7 +187,9 @@ From IntelliJ:
 - Run `Main`
 
 From terminal:
+```bash
 ./gradlew run
+```
 
 ---
 
