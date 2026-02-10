@@ -6,11 +6,12 @@ import edu.uoc.dao.ReservationTableDao;
 import edu.uoc.dao.TableDao;
 import edu.uoc.db.Database;
 import edu.uoc.model.Reservation;
+import edu.uoc.model.Table;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 public class ReservationService {
 
@@ -67,6 +68,9 @@ public class ReservationService {
                     throw new IllegalArgumentException("Invalid or inactive table(s): " + tableIds);
                 }
 
+                // 2b) Capacity validation (F5)
+                validateCapacity(conn, tableIds, partySize);
+
                 // 3) Availability (overlap)
                 if (reservationDao.anyOverlappingForTables(conn, tableIds, startAt, endAt)) {
                     throw new IllegalStateException("Selected tables are not available in this time window");
@@ -102,6 +106,349 @@ public class ReservationService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to create reservation with tables", e);
         }
+    }
 
+    /**
+     * Checks whether the given tables are available for a time window.
+     *
+     * Business rules:
+     * - If endAt is null, defaults to startAt + 2 hours
+     * - Tables are unavailable if any overlapping reservation exists
+     * - CANCELLED and NO_SHOW reservations do not block availability
+     *
+     * @return true if tables are available, false otherwise
+     */
+    public boolean isAvailableForTables(
+            List<Long> tableIds,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt
+    ) {
+        if (startAt == null) {
+            throw new IllegalArgumentException("startAt cannot be null");
+        }
+
+        OffsetDateTime effectiveEndAt =
+                (endAt != null) ? endAt : startAt.plusHours(2);
+
+        try (Connection conn = Database.getConnection()) {
+
+            boolean overlapExists =
+                    reservationDao.anyOverlappingForTables(
+                            conn,
+                            tableIds,
+                            startAt,
+                            effectiveEndAt
+                    );
+
+            return !overlapExists;
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to check availability", e);
+        }
+    }
+
+    /**
+     * Lists all active tables that are available for the given time window.
+     *
+     * Business rules:
+     * - If endAt is null, defaults to startAt + 2 hours
+     * - Tables are unavailable if they have any overlapping reservation
+     * - CANCELLED and NO_SHOW do not block availability
+     */
+    public List<Table> listAvailableTables(OffsetDateTime startAt, OffsetDateTime endAt) {
+        if (startAt == null) {
+            throw new IllegalArgumentException("startAt cannot be null");
+        }
+
+        OffsetDateTime effectiveEndAt = (endAt != null) ? endAt : startAt.plusHours(2);
+
+        try (Connection conn = Database.getConnection()) {
+
+            // 1) Candidates = active tables
+            List<Table> activeTables = tableDao.findAllActive(conn);
+
+            List<Long> ids = activeTables.stream()
+                    .map(Table::getId)
+                    .toList();
+
+            // 2) Blocked ids = any table with an overlapping reservation
+            Set<Long> blockedIds = reservationDao.findOverlappingTableIds(
+                    conn, ids, startAt, effectiveEndAt
+            );
+
+            // 3) Available = active - blocked
+            return activeTables.stream()
+                    .filter(t -> !blockedIds.contains(t.getId()))
+                    .toList();
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to list available tables", e);
+        }
+    }
+
+    /**
+     * Cancels a reservation without deleting historical data.
+     *
+     * Rules:
+     * - status -> CANCELLED
+     * - cancelled_at -> set on first cancellation only
+     * - cancellation_reason -> stored if provided (not overwritten if already set)
+     *
+     * @return true if cancellation happened now, false if it was already cancelled
+     */
+    public boolean cancelReservation(long reservationId, String reason) {
+
+        if (reservationId <= 0) {
+            throw new IllegalArgumentException("reservationId must be > 0");
+        }
+
+        try (Connection conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try {
+                var statusOpt = reservationDao.findStatusById(conn, reservationId);
+
+                if (statusOpt.isEmpty()) {
+                    throw new IllegalArgumentException("Reservation not found: " + reservationId);
+                }
+
+                if ("CANCELLED".equalsIgnoreCase(statusOpt.get())) {
+                    conn.commit(); // nothing to do, but keep transaction style consistent
+                    return false;
+                }
+
+                int updated = reservationDao.cancelById(conn, reservationId, reason);
+
+                // Should be 1 if it existed and wasn't cancelled
+                if (updated != 1) {
+                    throw new IllegalStateException("Cancel failed unexpectedly for reservation: " + reservationId);
+                }
+
+                conn.commit();
+                return true;
+
+            } catch (Exception e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to cancel reservation", e);
+        }
+    }
+
+    /**
+     * Confirms a reservation as a lifecycle transition.
+     *
+     * Rules:
+     * - Valid transition: PENDING -> CONFIRMED
+     * - Other transitions rejected (CANCELLED/NO_SHOW/CONFIRMED)
+     *
+     * @return true if confirmed now, false if it was already CONFIRMED
+     */
+    public boolean confirmReservation(long reservationId) {
+
+        if (reservationId <= 0) {
+            throw new IllegalArgumentException("reservationId must be > 0");
+        }
+
+        try (Connection conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try {
+                var statusOpt = reservationDao.findStatusById(conn, reservationId);
+
+                if (statusOpt.isEmpty()) {
+                    throw new IllegalArgumentException("Reservation not found: " + reservationId);
+                }
+
+                String status = statusOpt.get();
+
+                if ("CONFIRMED".equalsIgnoreCase(status)) {
+                    conn.commit();
+                    return false; // idempotent: already confirmed
+                }
+
+                if (!"PENDING".equalsIgnoreCase(status)) {
+                    throw new IllegalStateException(
+                            "Invalid transition: " + status + " -> CONFIRMED"
+                    );
+                }
+
+                int updated = reservationDao.confirmById(conn, reservationId);
+
+                if (updated != 1) {
+                    throw new IllegalStateException("Confirm failed unexpectedly for reservation: " + reservationId);
+                }
+
+                conn.commit();
+                return true;
+
+            } catch (Exception e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to confirm reservation", e);
+        }
+    }
+
+    private void validateCapacity(Connection conn, List<Long> tableIds, int partySize) {
+        int totalCapacity = tableDao.sumCapacityByIds(conn, tableIds);
+
+        if (totalCapacity < partySize) {
+            throw new IllegalStateException(
+                    "Insufficient capacity: partySize=" + partySize + ", totalCapacity=" + totalCapacity
+            );
+        }
+    }
+
+    /**
+     * Validated manual assignment (CLI option 8).
+     *
+     * Rules:
+     * - SUM(capacity) >= partySize
+     * - Rejected if reservation status is CANCELLED or NO_SHOW
+     * - Transaction-safe: failure does not modify existing assignments
+     */
+    public void assignTablesToReservationValidated(long reservationId, List<Long> tableIds) {
+
+        if (reservationId <= 0) {
+            throw new IllegalArgumentException("reservationId must be > 0");
+        }
+        if (tableIds == null || tableIds.isEmpty()) {
+            throw new IllegalArgumentException("At least one table must be selected");
+        }
+
+        try (Connection conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try {
+                // Reservation exists + get party size + status
+                var infoOpt = reservationDao.findCapacityInfoById(conn, reservationId);
+                if (infoOpt.isEmpty()) {
+                    throw new IllegalArgumentException("Reservation not found: " + reservationId);
+                }
+
+                var info = infoOpt.get();
+                String status = info.status();
+
+                if ("CANCELLED".equalsIgnoreCase(status) || "NO_SHOW".equalsIgnoreCase(status)) {
+                    throw new IllegalStateException("Cannot assign tables to reservation with status: " + status);
+                }
+
+                // Tables exist and active
+                if (!tableDao.allActiveExistByIds(conn, tableIds)) {
+                    throw new IllegalArgumentException("Invalid or inactive table(s): " + tableIds);
+                }
+
+                // Capacity validation (F5)
+                validateCapacity(conn, tableIds, info.partySize());
+
+                // Optional but strongly recommended: overlap check using reservation start/end window
+                // (We can add this in F6 if you prefer — but capacity-only is OK for F5.)
+
+                // Replace assignments (transaction-safe)
+                reservationTableDao.replaceAssignments(conn, reservationId, tableIds);
+
+                conn.commit();
+
+            } catch (Exception e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to assign tables (validated)", e);
+        }
+    }
+
+    public long createReservationAutoAssignTables(
+            long customerId,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt,
+            int partySize,
+            String status,
+            String notes
+    ) {
+        Objects.requireNonNull(startAt, "startAt cannot be null");
+
+        if (endAt == null) {
+            endAt = startAt.plusHours(2);
+        }
+
+        if (partySize <= 0) {
+            throw new IllegalArgumentException("partySize must be > 0");
+        }
+
+        // 1) Get available tables for the window
+        List<Table> available = listAvailableTables(startAt, endAt);
+
+        // 2) Deterministic sort: smallest capacity first, then code
+        List<Table> sorted = available.stream()
+//                .sorted((a, b) -> {
+//                    int cmp = Integer.compare(a.getCapacity(), b.getCapacity());
+//                    if (cmp != 0) return cmp;
+//                    return a.getCode().compareToIgnoreCase(b.getCode());
+//                })
+
+//                .sorted(Comparator
+//                            .comparingInt(Table::getCapacity)
+//                            .thenComparingInt(t -> Integer.parseInt(t.getCode().substring(1))))
+                .sorted(
+                        Comparator.comparingInt(Table::getCapacity)
+                                .thenComparingInt(t -> extractTableNumber(t.getCode()))
+                                .thenComparing(Table::getCode, String.CASE_INSENSITIVE_ORDER)
+                )
+                .toList();
+
+        // 3) Greedy pick
+        List<Long> chosenIds = new ArrayList<>();
+        int total = 0;
+
+        for (Table t : sorted) {
+            chosenIds.add(t.getId());
+            total += t.getCapacity();
+            if (total >= partySize) break;
+        }
+
+        if (total < partySize) {
+            throw new IllegalStateException("No suitable combination of available tables for partySize=" + partySize);
+        }
+
+        // 4) Reuse your existing transaction-safe creation method
+        return createReservationWithTables(
+                customerId,
+                startAt,
+                endAt,
+                partySize,
+                status,
+                notes,
+                chosenIds
+        );
+    }
+
+    private static int extractTableNumber(String code) {
+        if (code == null) return Integer.MAX_VALUE;
+        String digits = code.replaceAll("\\D+", "");
+        if (digits.isEmpty()) return Integer.MAX_VALUE;
+        try {
+            return Integer.parseInt(digits);
+        } catch (NumberFormatException e) {
+            return Integer.MAX_VALUE;
+        }
     }
 }

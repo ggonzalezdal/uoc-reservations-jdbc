@@ -9,8 +9,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class ReservationDao {
 
@@ -146,7 +145,7 @@ public class ReservationDao {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
 
             // tableIds -> BIGINT[] parameter
-            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray()));
+            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray(new Long[0])));
 
             // overlap conditions
             ps.setObject(2, endAt);    // existingStart < newEnd
@@ -160,4 +159,180 @@ public class ReservationDao {
             throw new RuntimeException("Error checking overlap for tableIds " + tableIds, e);
         }
     }
+
+    public boolean anyOverlappingForTables(
+            List<Long> tableIds,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt
+    ) {
+        try (Connection conn = Database.getConnection()) {
+            return anyOverlappingForTables(conn, tableIds, startAt, endAt);
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to check overlapping reservations", e);
+        }
+    }
+
+    public Set<Long> findOverlappingTableIds(
+            Connection conn,
+            List<Long> tableIds,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt
+    ) {
+        if (tableIds == null || tableIds.isEmpty()) {
+            return Set.of();
+        }
+
+        String sql = """
+        SELECT DISTINCT rt.table_id
+        FROM reservation_tables rt
+        JOIN reservations r ON r.reservation_id = rt.reservation_id
+        WHERE rt.table_id = ANY (?::bigint[])
+          AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
+          AND r.start_at < ?
+          AND ? < COALESCE(r.end_at, r.start_at + interval '2 hours')
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray(new Long[0])));
+            ps.setObject(2, endAt);
+            ps.setObject(3, startAt);
+
+            Set<Long> blocked = new HashSet<>();
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    blocked.add(rs.getLong("table_id"));
+                }
+            }
+            return blocked;
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to find overlapping table ids", e);
+        }
+    }
+
+    /**
+     * Returns the current status for a reservation, or empty if not found.
+     */
+    public Optional<String> findStatusById(Connection conn, long reservationId) {
+        String sql = "SELECT status FROM reservations WHERE reservation_id = ?";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, reservationId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return Optional.empty();
+                return Optional.ofNullable(rs.getString("status"));
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch reservation status for id=" + reservationId, e);
+        }
+    }
+
+    /**
+     * Cancels a reservation (status=CANCELLED) and stores audit fields.
+     *
+     * Idempotent rule:
+     * - If cancelled_at already exists, do NOT overwrite it.
+     * - If cancellation_reason already exists, do NOT overwrite it.
+     *
+     * @return rows updated (0 or 1)
+     */
+    public int cancelById(Connection conn, long reservationId, String reason) {
+        String sql = """
+        UPDATE reservations
+        SET status = 'CANCELLED',
+            cancelled_at = COALESCE(cancelled_at, now()),
+            cancellation_reason = COALESCE(cancellation_reason, ?)
+        WHERE reservation_id = ?
+          AND status <> 'CANCELLED'
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            // Allow NULL if reason is blank/not provided
+            String normalizedReason = (reason == null || reason.isBlank()) ? null : reason.trim();
+
+            ps.setString(1, normalizedReason);
+            ps.setLong(2, reservationId);
+
+            return ps.executeUpdate();
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to cancel reservation id=" + reservationId, e);
+        }
+    }
+
+    /**
+     * Confirms a reservation.
+     *
+     * Rule: only PENDING -> CONFIRMED is allowed.
+     *
+     * @return rows updated (0 or 1)
+     */
+    public int confirmById(Connection conn, long reservationId) {
+        String sql = """
+        UPDATE reservations
+        SET status = 'CONFIRMED'
+        WHERE reservation_id = ?
+          AND status = 'PENDING'
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, reservationId);
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to confirm reservation id=" + reservationId, e);
+        }
+    }
+
+    public record ReservationCapacityInfo(int partySize, String status) {}
+
+    public Optional<ReservationCapacityInfo> findCapacityInfoById(
+            Connection conn,
+            long reservationId
+    ) {
+        String sql = """
+        SELECT party_size, status
+        FROM reservations
+        WHERE reservation_id = ?
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, reservationId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return Optional.empty();
+
+                return Optional.of(new ReservationCapacityInfo(
+                        rs.getInt("party_size"),
+                        rs.getString("status")
+                ));
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException(
+                    "Failed to fetch reservation capacity info for id=" + reservationId, e
+            );
+        }
+    }
+
+    public boolean existsById(long reservationId) {
+        String sql = "SELECT 1 FROM reservations WHERE reservation_id = ?";
+
+        try (Connection conn = Database.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setLong(1, reservationId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to check reservation existence: " + reservationId, e);
+        }
+    }
+
 }

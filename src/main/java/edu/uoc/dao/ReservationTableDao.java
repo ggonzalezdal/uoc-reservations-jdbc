@@ -96,4 +96,21 @@ public class ReservationTableDao {
 
         return tableIds;
     }
+
+    public void deleteAssignments(Connection conn, long reservationId) {
+        String sql = "DELETE FROM reservation_tables WHERE reservation_id = ?";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, reservationId);
+            ps.executeUpdate();
+        } catch (Exception e) {
+            throw new RuntimeException("Error deleting assignments for reservation " + reservationId, e);
+        }
+    }
+
+    public void replaceAssignments(Connection conn, long reservationId, List<Long> tableIds) {
+        deleteAssignments(conn, reservationId);
+        addAssignments(conn, reservationId, tableIds);
+    }
+
 }
