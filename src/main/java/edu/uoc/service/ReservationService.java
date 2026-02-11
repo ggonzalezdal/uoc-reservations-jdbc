@@ -554,4 +554,15 @@ public class ReservationService {
             return Integer.MAX_VALUE;
         }
     }
+
+    /**
+     * Returns all tables in the restaurant (active and inactive).
+     * Thin pass-through to DAO. Useful for admin screens and diagnostics.
+     *
+     * @return list of all tables ordered by table code
+     */
+    public List<Table> getAllTables() {
+        return tableDao.findAll();
+    }
+
 }

@@ -48,6 +48,12 @@ public class ApiServer {
             ctx.json(available);
         });
 
+        // Lists all tables (active + inactive). Useful for admin/config UI later.
+        app.get("/tables", ctx -> {
+            var tables = reservationService.getAllTables(); // we'll add this method next
+            ctx.json(tables);
+        });
+
         // Basic API error mapping (thin and predictable).
         app.exception(IllegalArgumentException.class, (e, ctx) -> {
             ctx.status(400).json(new ErrorResponse("BAD_REQUEST", e.getMessage()));
