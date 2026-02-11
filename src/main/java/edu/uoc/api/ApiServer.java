@@ -122,6 +122,53 @@ public class ApiServer {
             ctx.status(201).json(new CreateReservationResponse(reservationId));
         });
 
+/**
+ * Confirms a reservation (PENDING -> CONFIRMED).
+ *
+ * POST /reservations/{id}/confirm
+ *
+ * Returns:
+ * - 200 + { reservationId, changed }
+ * - 400 invalid id
+ * - 404 reservation not found
+ * - 409 invalid lifecycle transition
+ */
+        app.post("/reservations/{id}/confirm", ctx -> {
+            long id = Long.parseLong(ctx.pathParam("id"));
+
+            boolean changed = reservationService.confirmReservation(id);
+            ctx.json(new StatusChangeResponse(id, changed));
+        });
+
+        /**
+         * Cancels a reservation (-> CANCELLED), preserving history.
+         *
+         * POST /reservations/{id}/cancel
+         * Body (optional): { "reason": "text" }
+         *
+         * Returns:
+         * - 200 + { reservationId, changed }
+         * - 400 invalid id
+         * - 404 reservation not found
+         */
+        app.post("/reservations/{id}/cancel", ctx -> {
+            long id = Long.parseLong(ctx.pathParam("id"));
+
+            // Body is optional, so handle empty body safely
+            CancelReservationRequest body = null;
+            try {
+                if (ctx.body() != null && !ctx.body().isBlank()) {
+                    body = ctx.bodyAsClass(CancelReservationRequest.class);
+                }
+            } catch (Exception ignore) {
+                // if body is malformed, we'll treat it as no reason
+            }
+
+            String reason = (body == null) ? null : body.reason();
+
+            boolean changed = reservationService.cancelReservation(id, reason);
+            ctx.json(new StatusChangeResponse(id, changed));
+        });
 
         // Basic API error mapping (thin and predictable).
         app.exception(NumberFormatException.class, (e, ctx) -> {
@@ -129,8 +176,19 @@ public class ApiServer {
         });
 
         app.exception(IllegalArgumentException.class, (e, ctx) -> {
-            ctx.status(400).json(new ErrorResponse("BAD_REQUEST", e.getMessage()));
+            String msg = e.getMessage() == null ? "" : e.getMessage();
+
+            if (msg.startsWith("Reservation not found:") || msg.startsWith("Customer not found:")) {
+                ctx.status(404).json(new ErrorResponse("NOT_FOUND", msg));
+                return;
+            }
+
+            ctx.status(400).json(new ErrorResponse("BAD_REQUEST", msg));
         });
+
+//        app.exception(IllegalArgumentException.class, (e, ctx) -> {
+//            ctx.status(400).json(new ErrorResponse("BAD_REQUEST", e.getMessage()));
+//        });
 
         app.exception(IllegalStateException.class, (e, ctx) -> {
             ctx.status(409).json(new ErrorResponse("CONFLICT", e.getMessage()));
@@ -227,6 +285,19 @@ public class ApiServer {
      * Response returned after successful creation.
      */
     public record CreateReservationResponse(long reservationId) {}
+
+    /**
+     * Optional request body for cancelling a reservation.
+     */
+    public record CancelReservationRequest(String reason) {}
+
+    /**
+     * Standard response for status-changing operations.
+     *
+     * @param reservationId affected reservation id
+     * @param changed true if the status changed now, false if it was already in that status (idempotent)
+     */
+    public record StatusChangeResponse(long reservationId, boolean changed) {}
 
     /**
      * Simple JSON response for health checks.
