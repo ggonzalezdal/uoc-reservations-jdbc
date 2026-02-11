@@ -1,10 +1,16 @@
 package edu.uoc.api;
 
+import edu.uoc.dao.ReservationDao;
+import edu.uoc.dao.CustomerDao;
+
 import edu.uoc.service.ReservationService;
 import io.javalin.Javalin;
 
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
+
+import io.javalin.json.JavalinJackson;
+import com.fasterxml.jackson.databind.SerializationFeature;
 
 /**
  * Minimal HTTP API server for the reservations backend.
@@ -25,8 +31,17 @@ public class ApiServer {
      */
     public static void main(String[] args) {
         ReservationService reservationService = new ReservationService();
+        ReservationDao reservationDao = new ReservationDao();
+        CustomerDao customerDao = new CustomerDao();
 
-        Javalin app = Javalin.create(config -> config.http.defaultContentType = "application/json");
+        Javalin app = Javalin.create(config -> {
+            config.http.defaultContentType = "application/json";
+
+            config.jsonMapper(new JavalinJackson().updateMapper(mapper -> {
+                mapper.findAndRegisterModules(); // picks up JavaTimeModule from jackson-datatype-jsr310
+                mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS); // ISO-8601 instead of numbers
+            }));
+        });
 
         // Health check endpoint for quick diagnostics.
         app.get("/health", ctx -> ctx.json(new HealthResponse("ok")));
@@ -54,6 +69,25 @@ public class ApiServer {
             ctx.json(tables);
         });
 
+        // Lists reservations joined with customer name (uses ReservationListItem DTO).
+        app.get("/reservations", ctx -> ctx.json(reservationDao.findAll()));
+
+        // List customers
+        app.get("/customers", ctx -> ctx.json(customerDao.findAll()));
+
+        // Get customer by id
+        app.get("/customers/{id}", ctx -> {
+            long id = Long.parseLong(ctx.pathParam("id"));
+
+            var customerOpt = customerDao.findById(id);
+            if (customerOpt.isEmpty()) {
+                ctx.status(404).json(new ErrorResponse("NOT_FOUND", "Customer not found: " + id));
+                return;
+            }
+            ctx.json(customerOpt.get());
+        });
+
+
         // Basic API error mapping (thin and predictable).
         app.exception(IllegalArgumentException.class, (e, ctx) -> {
             ctx.status(400).json(new ErrorResponse("BAD_REQUEST", e.getMessage()));
@@ -68,6 +102,11 @@ public class ApiServer {
 
             ctx.status(500).json(new ErrorResponse("INTERNAL_ERROR", "Unexpected server error"));
         });
+
+        app.exception(NumberFormatException.class, (e, ctx) -> {
+            ctx.status(400).json(new ErrorResponse("BAD_REQUEST", "Invalid numeric value"));
+        });
+
 
         app.start(PORT);
         System.out.println("API running on http://localhost:" + PORT);
