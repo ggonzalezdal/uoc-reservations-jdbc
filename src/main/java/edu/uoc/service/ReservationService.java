@@ -561,8 +561,8 @@ public class ReservationService {
      *
      * @return list of all tables ordered by table code
      */
-    public List<Table> getAllTables() {
-        return tableDao.findAll();
-    }
+//    public List<Table> getAllTables() {
+//        return tableDao.findAll();
+//    }
 
 }

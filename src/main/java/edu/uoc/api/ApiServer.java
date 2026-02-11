@@ -2,6 +2,7 @@ package edu.uoc.api;
 
 import edu.uoc.dao.ReservationDao;
 import edu.uoc.dao.CustomerDao;
+import edu.uoc.dao.TableDao;
 
 import edu.uoc.service.ReservationService;
 import io.javalin.Javalin;
@@ -33,6 +34,7 @@ public class ApiServer {
         ReservationService reservationService = new ReservationService();
         ReservationDao reservationDao = new ReservationDao();
         CustomerDao customerDao = new CustomerDao();
+        TableDao tableDao = new TableDao();
 
         Javalin app = Javalin.create(config -> {
             config.http.defaultContentType = "application/json";
@@ -64,10 +66,10 @@ public class ApiServer {
         });
 
         // Lists all tables (active + inactive). Useful for admin/config UI later.
-        app.get("/tables", ctx -> {
-            var tables = reservationService.getAllTables(); // we'll add this method next
-            ctx.json(tables);
-        });
+//        app.get("/tables", ctx -> {
+//            var tables = reservationService.getAllTables(); // we'll add this method next
+//            ctx.json(tables);
+//        });
 
         // Lists reservations joined with customer name (uses ReservationListItem DTO).
         app.get("/reservations", ctx -> ctx.json(reservationDao.findAll()));
@@ -87,8 +89,15 @@ public class ApiServer {
             ctx.json(customerOpt.get());
         });
 
+        // Lists all tables (active + inactive). Useful for admin/config UI.
+        app.get("/tables", ctx -> ctx.json(tableDao.findAll()));
+
 
         // Basic API error mapping (thin and predictable).
+        app.exception(NumberFormatException.class, (e, ctx) -> {
+            ctx.status(400).json(new ErrorResponse("BAD_REQUEST", "Invalid numeric value"));
+        });
+
         app.exception(IllegalArgumentException.class, (e, ctx) -> {
             ctx.status(400).json(new ErrorResponse("BAD_REQUEST", e.getMessage()));
         });
@@ -103,9 +112,7 @@ public class ApiServer {
             ctx.status(500).json(new ErrorResponse("INTERNAL_ERROR", "Unexpected server error"));
         });
 
-        app.exception(NumberFormatException.class, (e, ctx) -> {
-            ctx.status(400).json(new ErrorResponse("BAD_REQUEST", "Invalid numeric value"));
-        });
+
 
 
         app.start(PORT);
