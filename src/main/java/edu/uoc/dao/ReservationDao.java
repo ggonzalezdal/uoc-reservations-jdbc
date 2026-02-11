@@ -9,12 +9,41 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
+/**
+ * Data Access Object for {@link Reservation} and reservation-related queries.
+ *
+ * <p>This DAO provides:</p>
+ * <ul>
+ *   <li>Reservation listing with customer name (DTO view)</li>
+ *   <li>Transaction-aware reservation insert</li>
+ *   <li>Overlap checks for assigned tables</li>
+ *   <li>Status transitions (cancel/confirm) with audit fields</li>
+ * </ul>
+ *
+ * <p>Transaction-aware methods accept a {@link Connection} and do not manage
+ * commit/rollback. Non-transactional convenience overloads open their own connection.</p>
+ *
+ * @since 1.0
+ */
 public class ReservationDao {
 
+    // -------------------------------------------------------------------------
+    // Queries / Reads
+    // -------------------------------------------------------------------------
+
     /**
-     * Returns reservations joined with customer name, ordered by start time.
+     * Retrieves all reservations joined with customer full name.
+     *
+     * <p>Returns a list of {@link ReservationListItem} DTOs ordered by start time.</p>
+     *
+     * @return list of reservation list items (empty if none exist)
+     * @throws RuntimeException if a database error occurs
      */
     public List<ReservationListItem> findAll() {
         String sql = """
@@ -40,27 +69,7 @@ public class ReservationDao {
              ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
-                long reservationId = rs.getLong("reservation_id");
-                long customerId = rs.getLong("customer_id");
-                String customerName = rs.getString("full_name");
-                OffsetDateTime startAt = rs.getObject("start_at", OffsetDateTime.class);
-                OffsetDateTime endAt = rs.getObject("end_at", OffsetDateTime.class); // nullable
-                int partySize = rs.getInt("party_size");
-                String status = rs.getString("status");
-                String notes = rs.getString("notes"); // nullable
-                OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
-
-                results.add(new ReservationListItem(
-                        reservationId,
-                        customerId,
-                        customerName,
-                        startAt,
-                        endAt,
-                        partySize,
-                        status,
-                        notes,
-                        createdAt
-                ));
+                results.add(mapReservationListItem(rs));
             }
 
             return results;
@@ -71,148 +80,40 @@ public class ReservationDao {
     }
 
     /**
-     * Inserts a reservation using the provided Connection (transaction-aware).
-     * Returns the generated reservation_id and sets reservationId + createdAt into the Reservation object.
+     * Checks whether a reservation exists by its identifier.
      *
-     * Note: This method does NOT commit/rollback. The caller controls the transaction.
+     * <p>Non-transactional: opens and closes its own connection.</p>
+     *
+     * @param reservationId reservation ID
+     * @return true if the reservation exists, false otherwise
+     * @throws RuntimeException if a database error occurs
      */
-    public long insert(Connection conn, Reservation r) {
-        String sql = """
-        INSERT INTO reservations (customer_id, start_at, end_at, party_size, status, notes)
-        VALUES (?, ?, ?, ?, ?, ?)
-        RETURNING reservation_id, created_at
-        """;
+    public boolean existsById(long reservationId) {
+        String sql = "SELECT 1 FROM reservations WHERE reservation_id = ?";
 
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = Database.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            ps.setLong(1, r.getCustomerId());
-            ps.setObject(2, r.getStartAt());   // OffsetDateTime -> timestamptz
-            ps.setObject(3, r.getEndAt());     // nullable ok
-            ps.setInt(4, r.getPartySize());
-            ps.setString(5, r.getStatus());
-            ps.setString(6, r.getNotes());     // nullable ok
+            ps.setLong(1, reservationId);
 
             try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    throw new SQLException("Insert succeeded but no reservation_id returned.");
-                }
-                long id = rs.getLong("reservation_id");
-                r.setReservationId(id);
-
-                OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
-                r.setCreatedAt(createdAt);
-
-                return id;
+                return rs.next();
             }
 
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to insert reservation", e);
-        }
-    }
-
-    /**
-     * Backwards-compatible convenience method (non-transactional).
-     * Opens its own connection.
-     */
-    public long insert(Reservation r) {
-        try (Connection conn = Database.getConnection()) {
-            return insert(conn, r);
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to insert reservation", e);
-        }
-    }
-
-    public boolean anyOverlappingForTables(Connection conn,
-                                           List<Long> tableIds,
-                                           OffsetDateTime startAt,
-                                           OffsetDateTime endAt) {
-
-        if (tableIds == null || tableIds.isEmpty()) {
-            return false; // no tables => nothing can overlap
-        }
-
-        String sql = """
-        SELECT 1
-        FROM reservation_tables rt
-        JOIN reservations r ON r.reservation_id = rt.reservation_id
-        WHERE rt.table_id = ANY (?::bigint[])
-          AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
-          AND r.start_at < ?
-          AND ? < COALESCE(r.end_at, r.start_at + interval '2 hours')
-        LIMIT 1
-        """;
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            // tableIds -> BIGINT[] parameter
-            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray(new Long[0])));
-
-            // overlap conditions
-            ps.setObject(2, endAt);    // existingStart < newEnd
-            ps.setObject(3, startAt);  // newStart < existingEnd
-
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next(); // if any row found => overlap exists
-            }
-
-        } catch (Exception e) {
-            throw new RuntimeException("Error checking overlap for tableIds " + tableIds, e);
-        }
-    }
-
-    public boolean anyOverlappingForTables(
-            List<Long> tableIds,
-            OffsetDateTime startAt,
-            OffsetDateTime endAt
-    ) {
-        try (Connection conn = Database.getConnection()) {
-            return anyOverlappingForTables(conn, tableIds, startAt, endAt);
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to check overlapping reservations", e);
-        }
-    }
-
-    public Set<Long> findOverlappingTableIds(
-            Connection conn,
-            List<Long> tableIds,
-            OffsetDateTime startAt,
-            OffsetDateTime endAt
-    ) {
-        if (tableIds == null || tableIds.isEmpty()) {
-            return Set.of();
-        }
-
-        String sql = """
-        SELECT DISTINCT rt.table_id
-        FROM reservation_tables rt
-        JOIN reservations r ON r.reservation_id = rt.reservation_id
-        WHERE rt.table_id = ANY (?::bigint[])
-          AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
-          AND r.start_at < ?
-          AND ? < COALESCE(r.end_at, r.start_at + interval '2 hours')
-        """;
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray(new Long[0])));
-            ps.setObject(2, endAt);
-            ps.setObject(3, startAt);
-
-            Set<Long> blocked = new HashSet<>();
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    blocked.add(rs.getLong("table_id"));
-                }
-            }
-            return blocked;
-
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to find overlapping table ids", e);
+            throw new RuntimeException("Failed to check reservation existence: " + reservationId, e);
         }
     }
 
     /**
      * Returns the current status for a reservation, or empty if not found.
+     *
+     * <p>Transaction-aware: uses the provided connection.</p>
+     *
+     * @param conn          existing database connection
+     * @param reservationId reservation ID
+     * @return optional status string
+     * @throws RuntimeException if a database error occurs
      */
     public Optional<String> findStatusById(Connection conn, long reservationId) {
         String sql = "SELECT status FROM reservations WHERE reservation_id = ?";
@@ -230,28 +131,245 @@ public class ReservationDao {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Inserts
+    // -------------------------------------------------------------------------
+
     /**
-     * Cancels a reservation (status=CANCELLED) and stores audit fields.
+     * Inserts a reservation using the provided connection (transaction-aware).
      *
-     * Idempotent rule:
-     * - If cancelled_at already exists, do NOT overwrite it.
-     * - If cancellation_reason already exists, do NOT overwrite it.
+     * <p>This method returns the generated {@code reservation_id} and also sets:</p>
+     * <ul>
+     *   <li>{@code reservationId} into the provided {@link Reservation} object</li>
+     *   <li>{@code createdAt} into the provided {@link Reservation} object</li>
+     * </ul>
      *
-     * @return rows updated (0 or 1)
+     * <p>This method does not commit/rollback. The caller controls the transaction.</p>
+     *
+     * @param conn existing database connection (transaction context)
+     * @param r    reservation to insert
+     * @return generated reservation ID
+     * @throws RuntimeException if insertion fails
      */
-    public int cancelById(Connection conn, long reservationId, String reason) {
+    public long insert(Connection conn, Reservation r) {
         String sql = """
-        UPDATE reservations
-        SET status = 'CANCELLED',
-            cancelled_at = COALESCE(cancelled_at, now()),
-            cancellation_reason = COALESCE(cancellation_reason, ?)
-        WHERE reservation_id = ?
-          AND status <> 'CANCELLED'
-        """;
+            INSERT INTO reservations (customer_id, start_at, end_at, party_size, status, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING reservation_id, created_at
+            """;
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            // Allow NULL if reason is blank/not provided
+            ps.setLong(1, r.getCustomerId());
+            ps.setObject(2, r.getStartAt());   // OffsetDateTime -> timestamptz
+            ps.setObject(3, r.getEndAt());     // nullable OK
+            ps.setInt(4, r.getPartySize());
+            ps.setString(5, r.getStatus());
+            ps.setString(6, r.getNotes());     // nullable OK
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new SQLException("Insert succeeded but no reservation_id returned.");
+                }
+
+                long id = rs.getLong("reservation_id");
+                r.setReservationId(id);
+
+                OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
+                r.setCreatedAt(createdAt);
+
+                return id;
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to insert reservation", e);
+        }
+    }
+
+    /**
+     * Convenience overload for inserting a reservation without an explicit transaction.
+     *
+     * <p>Opens a connection internally and delegates to {@link #insert(Connection, Reservation)}.</p>
+     *
+     * @param r reservation to insert
+     * @return generated reservation ID
+     * @throws RuntimeException if insertion fails
+     */
+    public long insert(Reservation r) {
+        try (Connection conn = Database.getConnection()) {
+            return insert(conn, r);
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to insert reservation", e);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Overlap checks (table availability)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Checks if any active reservation overlaps the given time window
+     * for any of the provided table IDs.
+     *
+     * <p>Overlap rule used:</p>
+     * <ul>
+     *   <li>ExistingStart &lt; NewEnd</li>
+     *   <li>NewStart &lt; ExistingEnd</li>
+     * </ul>
+     *
+     * <p>Reservations with status {@code CANCELLED} or {@code NO_SHOW} are ignored.</p>
+     *
+     * <p>If {@code endAt} is null in an existing reservation, this query treats it as
+     * {@code start_at + 2 hours} using {@code COALESCE}.</p>
+     *
+     * <p>Transaction-aware: uses provided connection.</p>
+     *
+     * @param conn     existing database connection
+     * @param tableIds table IDs to check (empty => no overlap)
+     * @param startAt  new reservation start
+     * @param endAt    new reservation end
+     * @return true if any overlap exists, false otherwise
+     * @throws RuntimeException if a database error occurs
+     */
+    public boolean anyOverlappingForTables(
+            Connection conn,
+            List<Long> tableIds,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt
+    ) {
+        if (tableIds == null || tableIds.isEmpty()) {
+            return false; // no tables => nothing can overlap
+        }
+
+        String sql = """
+            SELECT 1
+            FROM reservation_tables rt
+            JOIN reservations r ON r.reservation_id = rt.reservation_id
+            WHERE rt.table_id = ANY (?::bigint[])
+              AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
+              AND r.start_at < ?
+              AND ? < COALESCE(r.end_at, r.start_at + interval '2 hours')
+            LIMIT 1
+            """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray(new Long[0])));
+            ps.setObject(2, endAt);    // existingStart < newEnd
+            ps.setObject(3, startAt);  // newStart < existingEnd
+
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error checking overlap for tableIds " + tableIds, e);
+        }
+    }
+
+    /**
+     * Non-transactional convenience overload for overlap checks.
+     *
+     * @param tableIds table IDs to check
+     * @param startAt  start of requested window
+     * @param endAt    end of requested window
+     * @return true if any overlap exists
+     */
+    public boolean anyOverlappingForTables(
+            List<Long> tableIds,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt
+    ) {
+        try (Connection conn = Database.getConnection()) {
+            return anyOverlappingForTables(conn, tableIds, startAt, endAt);
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to check overlapping reservations", e);
+        }
+    }
+
+    /**
+     * Returns which table IDs are blocked by overlapping reservations in the given window.
+     *
+     * <p>Transaction-aware: uses provided connection.</p>
+     *
+     * @param conn     existing database connection
+     * @param tableIds candidate table IDs
+     * @param startAt  requested start
+     * @param endAt    requested end
+     * @return set of overlapping/blocked table IDs (empty if none)
+     */
+    public Set<Long> findOverlappingTableIds(
+            Connection conn,
+            List<Long> tableIds,
+            OffsetDateTime startAt,
+            OffsetDateTime endAt
+    ) {
+        if (tableIds == null || tableIds.isEmpty()) {
+            return Set.of();
+        }
+
+        String sql = """
+            SELECT DISTINCT rt.table_id
+            FROM reservation_tables rt
+            JOIN reservations r ON r.reservation_id = rt.reservation_id
+            WHERE rt.table_id = ANY (?::bigint[])
+              AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
+              AND r.start_at < ?
+              AND ? < COALESCE(r.end_at, r.start_at + interval '2 hours')
+            """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setArray(1, conn.createArrayOf("bigint", tableIds.toArray(new Long[0])));
+            ps.setObject(2, endAt);
+            ps.setObject(3, startAt);
+
+            Set<Long> blocked = new HashSet<>();
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    blocked.add(rs.getLong("table_id"));
+                }
+            }
+
+            return blocked;
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to find overlapping table ids", e);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Status transitions / updates
+    // -------------------------------------------------------------------------
+
+    /**
+     * Cancels a reservation by setting status to {@code CANCELLED} and storing audit fields.
+     *
+     * <p>Idempotent behavior:</p>
+     * <ul>
+     *   <li>If {@code cancelled_at} already exists, it is not overwritten.</li>
+     *   <li>If {@code cancellation_reason} already exists, it is not overwritten.</li>
+     * </ul>
+     *
+     * <p>Only updates if the reservation is not already cancelled.</p>
+     *
+     * @param conn          existing database connection
+     * @param reservationId reservation ID
+     * @param reason        optional cancellation reason (nullable/blank allowed)
+     * @return number of rows updated (0 or 1)
+     */
+    public int cancelById(Connection conn, long reservationId, String reason) {
+        String sql = """
+            UPDATE reservations
+            SET status = 'CANCELLED',
+                cancelled_at = COALESCE(cancelled_at, now()),
+                cancellation_reason = COALESCE(cancellation_reason, ?)
+            WHERE reservation_id = ?
+              AND status <> 'CANCELLED'
+            """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
             String normalizedReason = (reason == null || reason.isBlank()) ? null : reason.trim();
 
             ps.setString(1, normalizedReason);
@@ -267,17 +385,19 @@ public class ReservationDao {
     /**
      * Confirms a reservation.
      *
-     * Rule: only PENDING -> CONFIRMED is allowed.
+     * <p>Rule: only {@code PENDING -> CONFIRMED} is allowed.</p>
      *
-     * @return rows updated (0 or 1)
+     * @param conn          existing database connection
+     * @param reservationId reservation ID
+     * @return number of rows updated (0 or 1)
      */
     public int confirmById(Connection conn, long reservationId) {
         String sql = """
-        UPDATE reservations
-        SET status = 'CONFIRMED'
-        WHERE reservation_id = ?
-          AND status = 'PENDING'
-        """;
+            UPDATE reservations
+            SET status = 'CONFIRMED'
+            WHERE reservation_id = ?
+              AND status = 'PENDING'
+            """;
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, reservationId);
@@ -287,17 +407,33 @@ public class ReservationDao {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Extra query: capacity information
+    // -------------------------------------------------------------------------
+
+    /**
+     * DTO-like record for minimal capacity-related reservation information.
+     *
+     * @param partySize reservation party size
+     * @param status    current reservation status
+     */
     public record ReservationCapacityInfo(int partySize, String status) {}
 
-    public Optional<ReservationCapacityInfo> findCapacityInfoById(
-            Connection conn,
-            long reservationId
-    ) {
+    /**
+     * Retrieves party size and status for a reservation.
+     *
+     * <p>Transaction-aware: uses provided connection.</p>
+     *
+     * @param conn          existing database connection
+     * @param reservationId reservation ID
+     * @return optional capacity info if reservation exists
+     */
+    public Optional<ReservationCapacityInfo> findCapacityInfoById(Connection conn, long reservationId) {
         String sql = """
-        SELECT party_size, status
-        FROM reservations
-        WHERE reservation_id = ?
-        """;
+            SELECT party_size, status
+            FROM reservations
+            WHERE reservation_id = ?
+            """;
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, reservationId);
@@ -318,21 +454,21 @@ public class ReservationDao {
         }
     }
 
-    public boolean existsById(long reservationId) {
-        String sql = "SELECT 1 FROM reservations WHERE reservation_id = ?";
+    // -------------------------------------------------------------------------
+    // Internal mapping helper
+    // -------------------------------------------------------------------------
 
-        try (Connection conn = Database.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setLong(1, reservationId);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next();
-            }
-
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to check reservation existence: " + reservationId, e);
-        }
+    private ReservationListItem mapReservationListItem(ResultSet rs) throws SQLException {
+        return new ReservationListItem(
+                rs.getLong("reservation_id"),
+                rs.getLong("customer_id"),
+                rs.getString("full_name"),
+                rs.getObject("start_at", OffsetDateTime.class),
+                rs.getObject("end_at", OffsetDateTime.class),
+                rs.getInt("party_size"),
+                rs.getString("status"),
+                rs.getString("notes"),
+                rs.getObject("created_at", OffsetDateTime.class)
+        );
     }
-
 }

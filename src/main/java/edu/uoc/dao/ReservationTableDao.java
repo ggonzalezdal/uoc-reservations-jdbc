@@ -8,11 +8,37 @@ import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Data Access Object for reservation-table assignments.
+ *
+ * <p>Manages the join table {@code reservation_tables} which represents
+ * a many-to-many relationship between reservations and physical restaurant tables.</p>
+ *
+ * <p>Database assumptions:</p>
+ * <ul>
+ *   <li>The primary key is {@code (reservation_id, table_id)}.</li>
+ *   <li>Inserts use {@code ON CONFLICT DO NOTHING} to keep operations idempotent.</li>
+ * </ul>
+ *
+ * <p>Transaction-aware methods accept a {@link Connection} and do not commit/rollback.
+ * Convenience overloads open their own connection for simple CLI usage.</p>
+ *
+ * @since 1.0
+ */
 public class ReservationTableDao {
 
     /**
-     * Assigns ONE table to ONE reservation.
-     * Uses ON CONFLICT DO NOTHING because (reservation_id, table_id) is the PK.
+     * Assigns one table to one reservation.
+     *
+     * <p>Idempotent insert: if the assignment already exists, it is ignored
+     * due to {@code ON CONFLICT DO NOTHING}.</p>
+     *
+     * <p>Transaction-aware: uses provided connection; caller controls commit/rollback.</p>
+     *
+     * @param conn          existing database connection
+     * @param reservationId reservation ID
+     * @param tableId       table ID
+     * @throws RuntimeException if a database error occurs
      */
     public void addAssignment(Connection conn, long reservationId, long tableId) {
         String sql = """
@@ -26,13 +52,24 @@ public class ReservationTableDao {
             ps.setLong(2, tableId);
             ps.executeUpdate();
         } catch (Exception e) {
-            throw new RuntimeException("Error assigning table " + tableId + " to reservation " + reservationId, e);
+            throw new RuntimeException(
+                    "Error assigning table " + tableId + " to reservation " + reservationId,
+                    e
+            );
         }
     }
 
     /**
-     * Assigns MANY tables to ONE reservation using batch insert.
-     * Transaction-safe: caller controls commit/rollback via the Connection.
+     * Assigns multiple tables to one reservation using JDBC batch insert.
+     *
+     * <p>Idempotent: duplicate assignments are ignored.</p>
+     *
+     * <p>Transaction-aware: uses provided connection; caller controls commit/rollback.</p>
+     *
+     * @param conn          existing database connection
+     * @param reservationId reservation ID
+     * @param tableIds      list of table IDs to assign
+     * @throws RuntimeException if a database error occurs
      */
     public void addAssignments(Connection conn, long reservationId, List<Long> tableIds) {
         String sql = """
@@ -54,8 +91,14 @@ public class ReservationTableDao {
     }
 
     /**
-     * Convenience method (non-transactional): opens its own connection.
-     * Useful for demos/CLI until we introduce the service layer.
+     * Convenience overload for assigning multiple tables without an explicit transaction.
+     *
+     * <p>Opens a connection internally and delegates to
+     * {@link #addAssignments(Connection, long, List)}.</p>
+     *
+     * @param reservationId reservation ID
+     * @param tableIds      list of table IDs to assign
+     * @throws RuntimeException if a database error occurs
      */
     public void addAssignments(long reservationId, List<Long> tableIds) {
         try (Connection conn = Database.getConnection()) {
@@ -66,8 +109,14 @@ public class ReservationTableDao {
     }
 
     /**
-     * Returns table_ids assigned to a reservation (raw ids).
-     * Useful for verification and later service logic.
+     * Retrieves all table IDs assigned to a reservation.
+     *
+     * <p>Returns raw IDs, ordered ascending. This method is commonly used by the CLI
+     * and by service validation logic.</p>
+     *
+     * @param reservationId reservation ID
+     * @return list of assigned table IDs (empty if none)
+     * @throws RuntimeException if a database error occurs
      */
     public List<Long> findTableIdsByReservationId(long reservationId) {
         String sql = """
@@ -91,12 +140,24 @@ public class ReservationTableDao {
             }
 
         } catch (Exception e) {
-            throw new RuntimeException("Error fetching table assignments for reservation " + reservationId, e);
+            throw new RuntimeException(
+                    "Error fetching table assignments for reservation " + reservationId,
+                    e
+            );
         }
 
         return tableIds;
     }
 
+    /**
+     * Deletes all assignments for a reservation.
+     *
+     * <p>Transaction-aware: uses provided connection; caller controls commit/rollback.</p>
+     *
+     * @param conn          existing database connection
+     * @param reservationId reservation ID
+     * @throws RuntimeException if a database error occurs
+     */
     public void deleteAssignments(Connection conn, long reservationId) {
         String sql = "DELETE FROM reservation_tables WHERE reservation_id = ?";
 
@@ -108,9 +169,25 @@ public class ReservationTableDao {
         }
     }
 
+    /**
+     * Replaces the set of assigned tables for a reservation.
+     *
+     * <p>Implementation strategy:</p>
+     * <ol>
+     *   <li>Delete existing assignments</li>
+     *   <li>Insert the new assignments (batch)</li>
+     * </ol>
+     *
+     * <p>Transaction-aware: must be executed inside a transaction to avoid leaving
+     * the reservation temporarily without assignments if a failure occurs.</p>
+     *
+     * @param conn          existing database connection
+     * @param reservationId reservation ID
+     * @param tableIds      new set of table IDs to assign
+     * @throws RuntimeException if a database error occurs
+     */
     public void replaceAssignments(Connection conn, long reservationId, List<Long> tableIds) {
         deleteAssignments(conn, reservationId);
         addAssignments(conn, reservationId, tableIds);
     }
-
 }

@@ -2,6 +2,17 @@ package edu.uoc.dto;
 
 import java.time.OffsetDateTime;
 
+/**
+ * Data Transfer Object representing a reservation list view.
+ *
+ * <p>This DTO is used when listing reservations joined with customer data.
+ * It is intentionally separate from the {@code Reservation} domain model
+ * to avoid coupling presentation queries with transactional entities.</p>
+ *
+ * <p>This class is immutable.</p>
+ *
+ * @since 1.0
+ */
 public class ReservationListItem {
 
     private final long reservationId;
@@ -11,9 +22,22 @@ public class ReservationListItem {
     private final OffsetDateTime endAt;      // nullable
     private final int partySize;
     private final String status;
-    private final String notes;             // nullable
+    private final String notes;              // nullable
     private final OffsetDateTime createdAt;
 
+    /**
+     * Creates a reservation list projection.
+     *
+     * @param reservationId unique reservation identifier
+     * @param customerId    customer identifier
+     * @param customerName  customer's full name
+     * @param startAt       reservation start date-time
+     * @param endAt         reservation end date-time (nullable)
+     * @param partySize     number of guests
+     * @param status        reservation status (e.g., PENDING, CONFIRMED)
+     * @param notes         optional notes (nullable)
+     * @param createdAt     timestamp when reservation was created
+     */
     public ReservationListItem(long reservationId,
                                long customerId,
                                String customerName,
@@ -46,18 +70,28 @@ public class ReservationListItem {
 
     @Override
     public String toString() {
-        return "ReservationListItem{" +
-                "reservationId=" + reservationId +
-                ", customerId=" + customerId +
-                ", customerName='" + customerName + '\'' +
-                ", startAt=" + startAt +
-                ", endAt=" + endAt +
-                ", partySize=" + partySize +
-                ", status='" + status + '\'' +
-                ", notes='" + notes + '\'' +
-                ", createdAt=" + createdAt +
-                '}';
+        return """
+                ReservationListItem{
+                    reservationId=%d,
+                    customerId=%d,
+                    customerName='%s',
+                    startAt=%s,
+                    endAt=%s,
+                    partySize=%d,
+                    status='%s',
+                    notes='%s',
+                    createdAt=%s
+                }
+                """.formatted(
+                reservationId,
+                customerId,
+                customerName,
+                startAt,
+                endAt,
+                partySize,
+                status,
+                notes,
+                createdAt
+        );
     }
 }
-
-
