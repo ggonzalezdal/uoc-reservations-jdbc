@@ -92,6 +92,36 @@ public class ApiServer {
         // Lists all tables (active + inactive). Useful for admin/config UI.
         app.get("/tables", ctx -> ctx.json(tableDao.findAll()));
 
+        /**
+         * Creates a reservation and assigns tables in one transaction (transaction-safe).
+         *
+         * POST /reservations
+         * Body: CreateReservationRequest (JSON)
+         *
+         * Returns:
+         * - 201 + { "reservationId": ... } on success
+         * - 400 on invalid input
+         * - 409 if tables overlap / business conflict
+         */
+        app.post("/reservations", ctx -> {
+            CreateReservationRequest body = ctx.bodyAsClass(CreateReservationRequest.class);
+
+            OffsetDateTime startAt = parseOffsetDateTimeFieldOrThrow(body.startAt(), "startAt");
+            OffsetDateTime endAt = parseOptionalOffsetDateTimeField(body.endAt(), "endAt");
+
+            long reservationId = reservationService.createReservationWithTables(
+                    body.customerId(),
+                    startAt,
+                    endAt,
+                    body.partySize(),
+                    body.status(),
+                    body.notes(),
+                    body.tableIds()
+            );
+
+            ctx.status(201).json(new CreateReservationResponse(reservationId));
+        });
+
 
         // Basic API error mapping (thin and predictable).
         app.exception(NumberFormatException.class, (e, ctx) -> {
@@ -158,6 +188,45 @@ public class ApiServer {
             );
         }
     }
+
+    private static OffsetDateTime parseOffsetDateTimeFieldOrThrow(String raw, String fieldName) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException("Missing required field: " + fieldName);
+        }
+        try {
+            return OffsetDateTime.parse(raw);
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException(
+                    "Invalid '" + fieldName + "' datetime. Use ISO-8601, e.g. 2026-02-21T20:30:00Z"
+            );
+        }
+    }
+
+    private static OffsetDateTime parseOptionalOffsetDateTimeField(String raw, String fieldName) {
+        if (raw == null || raw.isBlank()) return null;
+        return parseOffsetDateTimeFieldOrThrow(raw, fieldName);
+    }
+
+    /**
+     * Request body for creating a reservation and assigning tables in one transaction.
+     *
+     * <p>Dates must be ISO-8601 OffsetDateTime strings, e.g. "2026-02-21T20:30:00Z"
+     * or "2026-02-21T20:30:00+01:00".</p>
+     */
+    public record CreateReservationRequest(
+            long customerId,
+            String startAt,
+            String endAt,      // optional
+            int partySize,
+            String status,     // optional
+            String notes,      // optional
+            java.util.List<Long> tableIds
+    ) {}
+
+    /**
+     * Response returned after successful creation.
+     */
+    public record CreateReservationResponse(long reservationId) {}
 
     /**
      * Simple JSON response for health checks.
