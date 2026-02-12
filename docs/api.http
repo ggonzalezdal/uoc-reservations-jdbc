@@ -129,3 +129,12 @@ GET {{baseUrl}}/reservations?from={{from}}&to={{to}}
 
 ### Filtering error example (missing 'to' -> 400)
 GET {{baseUrl}}/reservations?from={{from}}
+
+### Reservations filtered by status only
+GET {{baseUrl}}/reservations?status=PENDING
+
+### Reservations filtered by window + status
+GET {{baseUrl}}/reservations?from={{from}}&to={{to}}&status=CONFIRMED
+
+### Status validation example (400)
+GET {{baseUrl}}/reservations?status=WRONG

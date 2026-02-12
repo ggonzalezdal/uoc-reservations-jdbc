@@ -25,20 +25,34 @@ public final class ReservationsRoutes {
                     ctx.queryParam("to"), "to"
             );
 
-            // No filtering → return all
-            if (from == null && to == null) {
+            String status = ctx.queryParam("status");
+
+            // Validate window pairing
+            if ((from == null) != (to == null)) {
+                throw new IllegalArgumentException(
+                        "Both 'from' and 'to' query params are required when filtering by date"
+                );
+            }
+
+            // Validate status (optional)
+            if (status != null && !status.isBlank()) {
+                String s = status.trim().toUpperCase();
+                boolean ok = s.equals("PENDING") || s.equals("CONFIRMED") || s.equals("CANCELLED") || s.equals("NO_SHOW");
+                if (!ok) {
+                    throw new IllegalArgumentException("Invalid status. Use: PENDING, CONFIRMED, CANCELLED, NO_SHOW");
+                }
+                status = s;
+            } else {
+                status = null;
+            }
+
+            // No filters → keep existing behavior
+            if (from == null && status == null) {
                 ctx.json(reservationDao.findAll());
                 return;
             }
 
-            // Partial filtering → reject (clean API contract)
-            if (from == null || to == null) {
-                throw new IllegalArgumentException(
-                        "Both 'from' and 'to' query params are required when filtering"
-                );
-            }
-
-            ctx.json(reservationDao.findReservationsOverlapping(from, to));
+            ctx.json(reservationDao.findFiltered(from, to, status));
         });
 
         app.post("/reservations", ctx -> {
