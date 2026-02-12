@@ -15,6 +15,11 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     implementation 'org.postgresql:postgresql:42.7.4'
+    implementation 'io.javalin:javalin:6.3.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+    implementation 'org.slf4j:slf4j-simple:2.0.16'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.2'
+
 }
 
 application {
@@ -30,4 +35,11 @@ tasks.withType(Javadoc).configureEach {
     options.encoding = 'UTF-8'
     options.charSet = 'UTF-8'
     options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+tasks.register('runApi', JavaExec) {
+    group = 'application'
+    description = 'Run the Javalin HTTP API server'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'edu.uoc.api.ApiServer'
 }

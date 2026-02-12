@@ -1,0 +1,123 @@
+### ============================================================
+### uoc-reservations-jdbc — API Smoke Tests (Milestone 4)
+### File: docs/api.http
+### Usage (IntelliJ / JetBrains HTTP Client):
+### - Open this file
+### - Click the green "Run" ▶ next to each request
+###
+### Notes:
+### - OffsetDateTime must be ISO-8601 (with timezone offset)
+### - In URLs, '+' must be encoded as '%2B' (JetBrains usually handles it, but we keep it explicit)
+### - Default API base: http://localhost:7070
+### ============================================================
+
+@baseUrl = http://localhost:7070
+@json = application/json
+
+### ------------------------------------------------------------
+### A) Health
+### ------------------------------------------------------------
+
+### Health check
+GET {{baseUrl}}/health
+
+
+### ------------------------------------------------------------
+### B) Customers
+### ------------------------------------------------------------
+
+### List customers
+GET {{baseUrl}}/customers
+
+### Get customer by id (change id as needed)
+GET {{baseUrl}}/customers/1
+
+### Get customer by id (404 example)
+GET {{baseUrl}}/customers/999999
+
+
+### ------------------------------------------------------------
+### C) Tables
+### ------------------------------------------------------------
+
+### List all tables (active + inactive)
+GET {{baseUrl}}/tables
+
+### Available tables for a time window
+### IMPORTANT: encode '+' as '%2B' in query string
+@start = 2026-02-21T20:30:00%2B01:00
+@end = 2026-02-21T22:30:00%2B01:00
+GET {{baseUrl}}/tables/available?start={{start}}&end={{end}}
+
+### Available tables (missing start -> 400 example)
+GET {{baseUrl}}/tables/available?end={{end}}
+
+### Available tables (bad date -> 400 example)
+GET {{baseUrl}}/tables/available?start=not-a-date
+
+
+### ------------------------------------------------------------
+### D) Reservations
+### ------------------------------------------------------------
+
+### List reservations (ReservationListItem DTOs w/ customerName)
+GET {{baseUrl}}/reservations
+
+
+### Create reservation + assign tables (transaction-safe)
+### - Update customerId, partySize, tableIds to match your seeded DB
+### - status can be omitted or set (e.g., "PENDING")
+### - endAt is optional; set to null or remove to test
+POST {{baseUrl}}/reservations
+Content-Type: {{json}}
+
+{
+  "customerId": 1,
+  "startAt": "2026-02-21T20:30:00+01:00",
+  "endAt": "2026-02-21T22:30:00+01:00",
+  "partySize": 2,
+  "status": "PENDING",
+  "notes": "Smoke test reservation (api.http)",
+  "tableIds": [1]
+}
+###
+
+### Create reservation (empty body -> 400 example)
+POST {{baseUrl}}/reservations
+Content-Type: {{json}}
+
+###
+
+### Create reservation (malformed JSON -> 400 example)
+POST {{baseUrl}}/reservations
+Content-Type: {{json}}
+
+{
+  "customerId": 1,
+  "startAt": "2026-02-21T20:30:00+01:00",
+  "partySize": 2,
+  "tableIds": [1]
+###
+
+### Confirm reservation
+### - Put a real reservation id after creating one above
+@reservationId = 1
+POST {{baseUrl}}/reservations/{{reservationId}}/confirm
+
+### Cancel reservation (no reason)
+POST {{baseUrl}}/reservations/{{reservationId}}/cancel
+
+### Cancel reservation (with reason)
+POST {{baseUrl}}/reservations/{{reservationId}}/cancel
+Content-Type: {{json}}
+
+{
+  "reason": "Customer requested cancellation (api.http)"
+}
+
+### Cancel reservation (malformed body -> treated as no reason OR 400 depending on your handler)
+POST {{baseUrl}}/reservations/{{reservationId}}/cancel
+Content-Type: {{json}}
+
+{ "reason":
+###
