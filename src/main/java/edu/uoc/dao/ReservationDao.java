@@ -339,6 +339,83 @@ public class ReservationDao {
     }
 
     // -------------------------------------------------------------------------
+    // Overlap queries (reservations for calendar UI)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns reservations that overlap a given time window.
+     *
+     * <p>This is UI-friendly for calendar views (day/week/month), where a reservation
+     * should appear if it intersects the requested range.</p>
+     *
+     * <p>Overlap rule used:</p>
+     * <ul>
+     *   <li>ReservationStart &lt; WindowEnd</li>
+     *   <li>WindowStart &lt; ReservationEnd</li>
+     * </ul>
+     *
+     * <p>If {@code end_at} is null in an existing reservation, this query treats it as
+     * {@code start_at + 2 hours} using {@code COALESCE}.</p>
+     *
+     * <p>Results are ordered by {@code start_at} ascending for predictable UI rendering.</p>
+     *
+     * <p>Non-transactional: obtains its own connection.</p>
+     *
+     * @param from start of the requested window (inclusive boundary by overlap rule)
+     * @param to   end of the requested window (exclusive boundary by overlap rule)
+     * @return list of reservation list items overlapping the window
+     * @throws IllegalArgumentException if {@code from} or {@code to} is null
+     * @throws RuntimeException if a database error occurs
+     */
+    public List<ReservationListItem> findReservationsOverlapping(
+            OffsetDateTime from,
+            OffsetDateTime to
+    ) {
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("from and to are required");
+        }
+
+        String sql = """
+        SELECT
+          r.reservation_id,
+          r.customer_id,
+          c.full_name,
+          r.start_at,
+          r.end_at,
+          r.party_size,
+          r.status,
+          r.notes,
+          r.created_at
+        FROM reservations r
+        JOIN customers c ON c.customer_id = r.customer_id
+        WHERE r.start_at < ?
+          AND ? < COALESCE(r.end_at, r.start_at + interval '2 hours')
+        ORDER BY r.start_at
+        """;
+
+        List<ReservationListItem> results = new ArrayList<>();
+
+        try (Connection conn = Database.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setObject(1, to);
+            ps.setObject(2, from);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    results.add(mapReservationListItem(rs));
+                }
+            }
+
+            return results;
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to list reservations overlapping window", e);
+        }
+    }
+
+
+    // -------------------------------------------------------------------------
     // Status transitions / updates
     // -------------------------------------------------------------------------
 

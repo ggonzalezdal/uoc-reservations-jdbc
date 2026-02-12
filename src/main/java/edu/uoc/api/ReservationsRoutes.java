@@ -15,7 +15,31 @@ public final class ReservationsRoutes {
 
     public static void register(Javalin app, ReservationDao reservationDao, ReservationService reservationService) {
 
-        app.get("/reservations", ctx -> ctx.json(reservationDao.findAll()));
+        app.get("/reservations", ctx -> {
+
+            OffsetDateTime from = ApiParsers.readOptionalOffsetDateTimeQuery(
+                    ctx.queryParam("from"), "from"
+            );
+
+            OffsetDateTime to = ApiParsers.readOptionalOffsetDateTimeQuery(
+                    ctx.queryParam("to"), "to"
+            );
+
+            // No filtering → return all
+            if (from == null && to == null) {
+                ctx.json(reservationDao.findAll());
+                return;
+            }
+
+            // Partial filtering → reject (clean API contract)
+            if (from == null || to == null) {
+                throw new IllegalArgumentException(
+                        "Both 'from' and 'to' query params are required when filtering"
+                );
+            }
+
+            ctx.json(reservationDao.findReservationsOverlapping(from, to));
+        });
 
         app.post("/reservations", ctx -> {
             CreateReservationRequest body = ApiParsers.readRequiredJsonBody(ctx, CreateReservationRequest.class);

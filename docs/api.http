@@ -121,3 +121,11 @@ Content-Type: {{json}}
 
 { "reason":
 ###
+
+### Reservations overlapping a window (calendar UI)
+@from = 2026-02-21T00:00:00%2B01:00
+@to = 2026-02-22T00:00:00%2B01:00
+GET {{baseUrl}}/reservations?from={{from}}&to={{to}}
+
+### Filtering error example (missing 'to' -> 400)
+GET {{baseUrl}}/reservations?from={{from}}
