@@ -1,228 +1,142 @@
 // File: src/main/resources/public/js/app.js
-"use strict";
 
-// Same-origin API (served by Javalin at http://localhost:7070)
-const API_BASE = "";
+import { state, todayDateInputValue, dayWindowOffset } from "./state.js";
+import * as api from "./actions.js";
+import {
+    hideError,
+    showError,
+    setHealthValue,
+    setLoadedCount,
+    setLastFetch,
+    setActiveView,
+    renderReservationsTable,
+    setReservationsMeta
+} from "./render.js";
 
-document.addEventListener("DOMContentLoaded", () => {
-    // ---- Navigation (WAR-style views) ----
-    const navButtons = Array.from(document.querySelectorAll(".nav-link"));
-    const navClickables = Array.from(document.querySelectorAll(".nav-clickable"));
-
-    function showView(id) {
-        document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
-        const view = document.getElementById(id);
-        if (view) view.classList.add("active");
-
-        navButtons.forEach((b) => b.classList.toggle("active", b.dataset.target === id));
-    }
-
-    function wireNav(el) {
+function initNav() {
+    // Sidebar buttons + header clickable blocks
+    document.querySelectorAll("[data-target]").forEach((el) => {
         el.addEventListener("click", () => {
             const target = el.dataset.target;
-            if (target) showView(target);
+            if (!target) return;
+            hideError();
+            state.ui.activeViewId = target;
+            setActiveView(target);
         });
-    }
-
-    navButtons.forEach(wireNav);
-    navClickables.forEach(wireNav);
-
-    // ---- Dashboard bits ----
-    const apiBaseEl = document.getElementById("api-base");
-    if (apiBaseEl) apiBaseEl.textContent = window.location.origin;
-
-    const healthValue = document.getElementById("health-value");
-    const loadedCount = document.getElementById("loaded-count");
-    const lastFetch = document.getElementById("last-fetch");
-    const btnHealth = document.getElementById("btn-health");
-
-    btnHealth?.addEventListener("click", async () => {
-        try {
-            const data = await apiGetJson("/health");
-            healthValue.textContent = data?.status ?? "ok";
-        } catch (e) {
-            healthValue.textContent = "error";
-        }
     });
+}
 
-    // ---- Reservations UI ----
-    const dateInput = document.getElementById("date");
-    const statusSelect = document.getElementById("status");
+async function refreshHealth() {
+    hideError();
+    try {
+        await api.health();
+        setHealthValue("OK");
+    } catch (e) {
+        setHealthValue("DOWN");
+        showError(e);
+    }
+}
+
+function initDashboard() {
+    const apiBaseEl = document.getElementById("api-base");
+    if (apiBaseEl) apiBaseEl.textContent = state.apiBase;
+
+    document.getElementById("btn-health")?.addEventListener("click", refreshHealth);
+}
+
+function initReservationsControls() {
+    const dateEl = document.getElementById("date");
+    const statusEl = document.getElementById("status");
     const btnLoad = document.getElementById("btn-load");
     const btnClear = document.getElementById("btn-clear");
-    const tbody = document.getElementById("reservations-tbody");
-    const meta = document.getElementById("reservations-meta");
 
-    const errorCard = document.getElementById("error-card");
-    const errorBody = document.getElementById("error-body");
+    // defaults
+    dateEl.value = todayDateInputValue();
 
-    // default date = today
-    if (dateInput) {
-        const today = new Date();
-        dateInput.value = today.toISOString().slice(0, 10);
-    }
-
-    btnLoad?.addEventListener("click", async () => {
-        hideError();
-        setMeta("Loading…");
-
-        try {
-            const qs = buildReservationQuery(dateInput?.value, statusSelect?.value);
-            const list = await apiGetJson(`/reservations${qs}`);
-
-            renderReservations(Array.isArray(list) ? list : []);
-            setMeta(`Loaded ${Array.isArray(list) ? list.length : 0} reservations`);
-            loadedCount.textContent = String(Array.isArray(list) ? list.length : 0);
-            lastFetch.textContent = new Date().toLocaleTimeString();
-        } catch (e) {
-            showError(e);
-            setMeta("Failed to load");
-        }
-    });
-
+    btnLoad?.addEventListener("click", loadReservations);
     btnClear?.addEventListener("click", () => {
         hideError();
-        if (tbody) tbody.innerHTML = "";
-        setMeta("Cleared");
+        state.reservations.rows = [];
+        setLoadedCount(0);
+        setLastFetch(null);
+        setReservationsMeta("Cleared");
+        renderReservationsTable([]);
     });
 
-    // Optional: auto-load once when entering reservations view
-    // (keep simple for now; you can uncomment if you want)
-    // btnLoad?.click();
+    // Event delegation for inline Confirm/Cancel buttons rendered in table
+    document.getElementById("reservations-tbody")?.addEventListener("click", async (ev) => {
+        const btn = ev.target?.closest?.("button[data-action]");
+        if (!btn) return;
 
-    // ---- Helpers ----
+        const action = btn.dataset.action;
+        const id = btn.dataset.id;
+        if (!id) return;
 
-    function buildReservationQuery(dateYYYYMMDD, status) {
-        const params = new URLSearchParams();
+        hideError();
 
-        // If a day is selected -> convert to from/to window in local time with explicit offset.
-        // We keep +01:00 because you're in Spain (and your examples use +01:00).
-        // If you later want DST-safe behavior, we’ll generate offsets dynamically.
-        if (dateYYYYMMDD) {
-            const from = `${dateYYYYMMDD}T00:00:00+01:00`;
-            const toDate = addDays(dateYYYYMMDD, 1);
-            const to = `${toDate}T00:00:00+01:00`;
-
-            params.set("from", from);
-            params.set("to", to);
-        }
-
-        if (status) params.set("status", status);
-
-        const s = params.toString();
-        return s ? `?${encodeURI(s)}` : "";
-    }
-
-    function addDays(yyyyMmDd, days) {
-        const [y, m, d] = yyyyMmDd.split("-").map(Number);
-        const dt = new Date(Date.UTC(y, m - 1, d));
-        dt.setUTCDate(dt.getUTCDate() + days);
-        return dt.toISOString().slice(0, 10);
-    }
-
-    function renderReservations(items) {
-        if (!tbody) return;
-
-        tbody.innerHTML = "";
-
-        for (const r of items) {
-            const tr = document.createElement("tr");
-
-            const start = formatIso(r.startAt);
-            const end = r.endAt ? formatIso(r.endAt) : "—";
-            const notes = r.notes ?? "";
-
-            tr.appendChild(td(String(r.reservationId)));
-            tr.appendChild(td(String(r.customerName ?? "")));
-            tr.appendChild(td(start));
-            tr.appendChild(td(end));
-            tr.appendChild(td(String(r.partySize ?? "")));
-            tr.appendChild(tdBadge(r.status));
-            tr.appendChild(td(notes));
-
-            tbody.appendChild(tr);
-        }
-    }
-
-    function td(text) {
-        const el = document.createElement("td");
-        el.textContent = text;
-        return el;
-    }
-
-    function tdBadge(status) {
-        const el = document.createElement("td");
-        const s = String(status ?? "").toUpperCase();
-
-        const span = document.createElement("span");
-        span.className = `badge ${badgeClass(s)}`;
-        span.textContent = s || "—";
-
-        el.appendChild(span);
-        return el;
-    }
-
-    function badgeClass(s) {
-        if (s === "PENDING") return "pending";
-        if (s === "CONFIRMED") return "confirmed";
-        if (s === "CANCELLED") return "cancelled";
-        if (s === "NO_SHOW") return "no_show";
-        return "";
-    }
-
-    function formatIso(iso) {
-        if (!iso) return "—";
-        // Your API returns Z timestamps; show in local human-readable format.
         try {
-            const d = new Date(iso);
-            // 2026-02-21 20:00
-            const yyyy = d.getFullYear();
-            const mm = String(d.getMonth() + 1).padStart(2, "0");
-            const dd = String(d.getDate()).padStart(2, "0");
-            const hh = String(d.getHours()).padStart(2, "0");
-            const mi = String(d.getMinutes()).padStart(2, "0");
-            return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-        } catch {
-            return String(iso);
+            if (action === "confirm") {
+                await api.confirmReservation(id);
+            } else if (action === "cancel") {
+                // UI remains thin; backend authoritative. Reason optional.
+                const reason = window.prompt("Cancellation reason (optional):", "") ?? "";
+                await api.cancelReservation(id, reason);
+            }
+
+            // After action: refresh board
+            await loadReservations(true);
+        } catch (e) {
+            showError(e);
         }
+    });
+}
+
+async function loadReservations(isRefreshAfterAction = false) {
+    hideError();
+
+    const dateEl = document.getElementById("date");
+    const statusEl = document.getElementById("status");
+
+    const selectedDate = dateEl?.value || todayDateInputValue();
+    const status = statusEl?.value || ""; // "" = (any)
+
+    state.reservations.date = selectedDate;
+    state.reservations.status = status;
+
+    const { from, to } = dayWindowOffset(selectedDate);
+
+    setReservationsMeta(isRefreshAfterAction ? "Refreshing after action…" : "Loading…");
+
+    try {
+        const rows = await api.listReservations({ from, to, status });
+        state.reservations.rows = Array.isArray(rows) ? rows : [];
+
+        renderReservationsTable(state.reservations.rows);
+
+        const nowIso = new Date().toISOString();
+        state.reservations.lastFetchIso = nowIso;
+
+        setLoadedCount(state.reservations.rows.length);
+        setLastFetch(nowIso);
+
+        const statusLabel = status ? `status=${status}` : "status=ANY";
+        setReservationsMeta(`Loaded ${state.reservations.rows.length} · ${selectedDate} · ${statusLabel}`);
+    } catch (e) {
+        setReservationsMeta("Load failed");
+        renderReservationsTable([]);
+        showError(e);
     }
+}
 
-    async function apiGetJson(path) {
-        const res = await fetch(`${API_BASE}${path}`, {
-            headers: { Accept: "application/json" },
-        });
+// ---- Boot ----
+(function boot() {
+    initNav();
+    initDashboard();
+    initReservationsControls();
 
-        const text = await res.text();
-        let json = null;
-        try {
-            json = text ? JSON.parse(text) : null;
-        } catch {
-            // non-json fallback
-        }
+    // default view
+    setActiveView(state.ui.activeViewId);
 
-        if (!res.ok) {
-            const msg =
-                (json && json.message) ||
-                `HTTP ${res.status} ${res.statusText}\n\n${text || ""}`;
-            throw new Error(msg);
-        }
-
-        return json;
-    }
-
-    function setMeta(text) {
-        if (meta) meta.textContent = text;
-    }
-
-    function showError(err) {
-        if (!errorCard || !errorBody) return;
-        errorCard.classList.remove("hidden");
-        errorBody.textContent = String(err?.message ?? err);
-    }
-
-    function hideError() {
-        if (!errorCard || !errorBody) return;
-        errorCard.classList.add("hidden");
-        errorBody.textContent = "";
-    }
-});
+    // initial health check
+    refreshHealth().catch(() => {});
+})();
