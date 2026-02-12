@@ -1,40 +1,199 @@
-<!doctype html>
-<html lang="en">
+<!-- File: src/main/resources/public/index.html -->
+<!DOCTYPE html>
+<html lang="en-US">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Reservations UI (Milestone 5)</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>WAR Assistant - Reservations UI (Milestone 5)</title>
+
+    <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="images/favicons/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="images/favicons/favicon-64.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="images/favicons/favicon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="images/favicons/favicon-512.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="images/favicons/apple-touch-icon.png" />
+    <link rel="shortcut icon" href="images/favicons/favicon.ico" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+            href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700&display=swap"
+            rel="stylesheet"
+    />
+    <link
+            href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&display=swap"
+            rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/app.js" defer></script>
 </head>
+
 <body>
-<main class="container">
-    <h1>Reservations</h1>
-
-    <section class="card">
-        <div class="row">
-            <button id="btn-load">Load reservations</button>
-            <span id="status" class="muted"></span>
+<header class="app-header">
+    <div class="app-logo nav-clickable" data-target="view-landing" title="Go to dashboard">
+        <img src="images/favicon.svg" alt="WAR Assistant Logo" class="logo-icon" />
+        <div class="logo-text">
+            <span class="logo-name">WAR Assistant</span>
+            <span class="logo-subtitle">Reservations UI (Milestone 5)</span>
         </div>
-    </section>
+    </div>
 
-    <section class="card">
-        <h2>List</h2>
-        <table id="reservations-table">
-            <thead>
-            <tr>
-                <th>ID</th>
-                <th>Customer</th>
-                <th>Start</th>
-                <th>End</th>
-                <th>Party</th>
-                <th>Status</th>
-            </tr>
-            </thead>
-            <tbody id="reservations-body"></tbody>
-        </table>
-    </section>
-</main>
+    <div class="app-venue nav-clickable" data-target="view-reservations" title="Go to reservations">
+        Ànima Mediterrània
+    </div>
+</header>
 
-<script src="/app.js"></script>
+<div class="app-shell">
+    <nav class="app-sidebar">
+        <button class="nav-link active" data-target="view-landing">Dashboard</button>
+        <button class="nav-link" data-target="view-reservations">Reservations</button>
+    </nav>
+
+    <main class="app-main">
+        <!-- Landing / Dashboard -->
+        <section id="view-landing" class="view active">
+            <h1 class="view-title">Dashboard</h1>
+            <p class="view-subtitle">
+                Thin UI consuming your Javalin API. Next: basic workflows (confirm/cancel).
+            </p>
+
+            <div class="dashboard-grid">
+                <div class="card card-highlight">
+                    <h2>Live API</h2>
+                    <p>
+                        This UI reads real data from your backend:
+                        <code class="inline-code">GET /reservations</code>.
+                    </p>
+
+                    <div class="api-row">
+                        <span class="pill">Base</span>
+                        <code class="inline-code" id="api-base">http://localhost:7070</code>
+                    </div>
+
+                    <button class="primary-btn" data-target="view-reservations">
+                        Go to reservations
+                    </button>
+                </div>
+
+                <div class="card">
+                    <h3>Status</h3>
+                    <div class="stats-row">
+                        <div class="stat">
+                            <div class="stat-label">API health</div>
+                            <div class="stat-value" id="health-value">…</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Loaded</div>
+                            <div class="stat-value" id="loaded-count">0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Last fetch</div>
+                            <div class="stat-value" id="last-fetch">—</div>
+                        </div>
+                    </div>
+
+                    <button class="ghost-btn" id="btn-health">Check /health</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Reservations -->
+        <section id="view-reservations" class="view">
+            <h1 class="view-title">Reservations</h1>
+            <p class="view-subtitle">
+                Filter for calendar UI using query params:
+                <code class="inline-code">from</code>, <code class="inline-code">to</code>,
+                <code class="inline-code">status</code>.
+            </p>
+
+            <div class="card">
+                <div class="controls">
+                    <div class="control">
+                        <label for="date">Day</label>
+                        <input id="date" type="date" />
+                    </div>
+
+                    <div class="control">
+                        <label for="status">Status</label>
+                        <select id="status">
+                            <option value="">(any)</option>
+                            <option value="PENDING">PENDING</option>
+                            <option value="CONFIRMED">CONFIRMED</option>
+                            <option value="CANCELLED">CANCELLED</option>
+                            <option value="NO_SHOW">NO_SHOW</option>
+                        </select>
+                    </div>
+
+                    <div class="control control-actions">
+                        <button class="primary-btn" id="btn-load">Load reservations</button>
+                        <button class="ghost-btn" id="btn-clear">Clear</button>
+                    </div>
+
+                    <div class="control control-meta">
+                        <span class="muted" id="reservations-meta">Not loaded yet</span>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table class="reservations-table">
+                        <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Guest</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>Pax</th>
+                            <th>Status</th>
+                            <th>Notes</th>
+                        </tr>
+                        </thead>
+                        <tbody id="reservations-tbody">
+                        <!-- rows injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="table-footer-actions">
+                    <button class="ghost-btn" data-target="view-landing">Back to dashboard</button>
+                </div>
+            </div>
+
+            <div class="card card-error hidden" id="error-card" role="alert">
+                <div class="error-title">Request failed</div>
+                <pre class="error-body" id="error-body"></pre>
+            </div>
+        </section>
+    </main>
+</div>
+
+<footer class="app-footer">
+    <div class="footer-top">
+        <span class="footer-brand">WAR Assistant</span>
+        <span class="footer-dot">·</span>
+        <span class="footer-venue">Milestone 5 UI</span>
+    </div>
+
+    <div class="footer-social">
+        <a href="https://www.linkedin.com" target="_blank" aria-label="LinkedIn">
+            <img src="images/icons/icon-linkedin.svg" alt="" />
+        </a>
+        <a href="https://www.instagram.com" target="_blank" aria-label="Instagram">
+            <img src="images/icons/icon-instagram.svg" alt="" />
+        </a>
+        <a href="https://www.twitter.com" target="_blank" aria-label="Twitter / X">
+            <img src="images/icons/icon-x.svg" alt="" />
+        </a>
+        <a href="https://github.com" target="_blank" aria-label="GitHub">
+            <img src="images/icons/icon-github.svg" alt="" />
+        </a>
+    </div>
+
+    <div class="footer-bottom">
+        <span>© 2026 · Educational project</span>
+    </div>
+</footer>
 </body>
 </html>
+
