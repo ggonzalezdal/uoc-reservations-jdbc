@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Reservations UI (Milestone 5)</title>
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<main class="container">
+    <h1>Reservations</h1>
+
+    <section class="card">
+        <div class="row">
+            <button id="btn-load">Load reservations</button>
+            <span id="status" class="muted"></span>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>List</h2>
+        <table id="reservations-table">
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Customer</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Party</th>
+                <th>Status</th>
+            </tr>
+            </thead>
+            <tbody id="reservations-body"></tbody>
+        </table>
+    </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -21,6 +21,9 @@ public class ApiServer {
 
         Javalin app = Javalin.create(config -> {
             config.http.defaultContentType = "application/json";
+
+            config.staticFiles.add("/public");
+
             config.jsonMapper(new JavalinJackson().updateMapper(mapper -> {
                 mapper.findAndRegisterModules();
                 mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
