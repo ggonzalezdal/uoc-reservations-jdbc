@@ -4,15 +4,20 @@ Educational Java backend project built for **UOC – Introduction to Databases**
 
 This repository implements a clean, framework-free JDBC backend for a restaurant reservation system. The goal is to deeply understand how Java applications interact with relational databases without using Spring, JPA, or any ORM framework.
 
-The project now includes a thin HTTP API layer built with Javalin, exposing backend functionality via REST-style endpoints while preserving strict layered architecture.
+The project now includes:
+
+- Thin HTTP API layer built with Javalin
+- Reservation filtering for calendar-style queries
+- Static Web UI (Milestone 5 MVP) consuming the API
+- Strict layered architecture preserved end-to-end
 
 ---
 
 ## Project Status
 
-**Milestone 4 complete – Thin HTTP API**
+**Milestone 5 in progress – Web UI MVP**
 
-This version includes:
+Current implementation includes:
 
 - Transaction-safe service layer
 - Overlap-based availability engine
@@ -22,16 +27,20 @@ This version includes:
 - Active/inactive table enforcement
 - Clean CLI interface
 - Thin HTTP API layer
+- Reservation filtering (date window + status)
 - Consistent JSON error model
 - ISO-8601 OffsetDateTime serialization
 - Manual API smoke tests (`docs/api.http`)
+- Static Web UI served from `/public`
 - Full JavaDoc documentation
 
-Tagged milestone: `v0.4.0`
+Latest stable tag: `v0.4.0` (Milestone 4 – Thin HTTP API)
+
+Milestone 5 development continues on a feature branch.
 
 ---
 
-# Architecture
+## Architecture
 
 The project follows a strict layered architecture:
 
@@ -59,13 +68,17 @@ The project follows a strict layered architecture:
 - **Database (`edu.uoc.db`)**  
   Environment-based connection factory.
 
+- **Web UI (`src/main/resources/public`)**  
+  Static HTML/CSS/JS consuming the HTTP API.  
+  No direct database access.
+
 This mirrors real-world backend design and enforces clear separation of concerns.
 
 ---
 
-# HTTP API (Milestone 4)
+## HTTP API
 
-The project exposes a thin HTTP layer using **Javalin**.
+The project exposes a thin HTTP layer using Javalin.
 
 Business rules remain exclusively in the service layer.  
 The API only handles:
@@ -121,11 +134,21 @@ Server starts at:
 ### Reservations
 
     GET    /reservations
+    GET    /reservations?from=...&to=...
+    GET    /reservations?status=...
+    GET    /reservations?from=...&to=...&status=...
+
     POST   /reservations
     POST   /reservations/{id}/confirm
     POST   /reservations/{id}/cancel
 
 Reservation creation is transaction-safe and assigns tables atomically.
+
+Filtering supports:
+
+- Date window overlap logic
+- Status filtering
+- Combined filters
 
 ---
 
@@ -133,15 +156,13 @@ Reservation creation is transaction-safe and assigns tables atomically.
 
 - All responses are JSON
 - OffsetDateTime values use ISO-8601 format
-- Error responses are consistent:
+- Error responses follow a consistent structure:
 
-Example:
-
-    {
-      "code": "ERROR_CODE",
-      "message": "Human readable message",
-      "path": "/request/path"
-    }
+  {
+  "code": "ERROR_CODE",
+  "message": "Human readable message",
+  "path": "/request/path"
+  }
 
 Status codes:
 
@@ -168,11 +189,46 @@ This allows quick manual verification of:
 - Availability
 - Reservation creation
 - Confirm / cancel transitions
+- Filtering behavior
 - Error handling
 
 ---
 
-# Data Model
+## Web UI (Milestone 5 MVP)
+
+Static assets are served automatically from:
+
+    src/main/resources/public
+
+Structure:
+
+    public/
+    ├─ index.html
+    ├─ css/
+    │  └─ styles.css
+    ├─ js/
+    │  ├─ app.js
+    │  ├─ state.js
+    │  ├─ render.js
+    │  └─ actions.js
+    └─ images/
+
+Open in browser:
+
+    http://localhost:7070
+
+The UI:
+
+- Fetches reservations via `/reservations`
+- Supports filtering by date window and status
+- Renders results dynamically
+- Displays API errors consistently
+
+No frontend framework is used. Pure HTML, CSS, and vanilla JavaScript.
+
+---
+
+## Data Model
 
 PostgreSQL schema:
 
@@ -189,10 +245,10 @@ Includes:
 
 ---
 
-# Service Layer (Business Logic)
+## Service Layer (Business Logic)
 
 - Transaction-safe reservation creation
-- Default duration rule  
+- Default duration rule:  
   If `endAt` is null → `startAt + 2 hours`
 - Availability / overlap detection  
   `CANCELLED` and `NO_SHOW` do not block tables
@@ -208,27 +264,7 @@ Includes:
 
 ---
 
-# Project Structure
-
-    uoc-reservations-jdbc/
-    │
-    ├─ src/main/java/edu/uoc/
-    │  ├─ cli/          # CLI layer
-    │  ├─ api/          # HTTP layer (Javalin)
-    │  ├─ service/      # Business logic
-    │  ├─ dao/          # JDBC persistence
-    │  ├─ model/        # Domain entities
-    │  ├─ dto/          # Query projections
-    │  ├─ db/           # Database connection
-    │  └─ Main.java     # CLI entry point
-    │
-    └─ docs/
-       ├─ diagrams/
-       └─ api.http
-
----
-
-# Requirements
+## Requirements
 
 - Java JDK 17+
 - PostgreSQL
@@ -236,7 +272,7 @@ Includes:
 
 ---
 
-# Database Setup
+## Database Setup
 
 1. Create database:
 
@@ -253,7 +289,7 @@ Notes:
 
 ---
 
-# Configuration (Environment Variables)
+## Configuration (Environment Variables)
 
 Required:
 
@@ -269,7 +305,7 @@ Example:
 
 ---
 
-# CLI Mode
+## CLI Mode
 
 Run the CLI version:
 
@@ -279,7 +315,7 @@ CLI remains available for manual interaction and admin configuration.
 
 ---
 
-# Transaction Model
+## Transaction Model
 
 - Transactions are owned exclusively by the service layer
 - DAOs never commit or rollback
@@ -290,7 +326,7 @@ This mirrors production backend architecture.
 
 ---
 
-# Learning Goals
+## Learning Goals
 
 This project intentionally avoids frameworks to focus on:
 
@@ -300,6 +336,8 @@ This project intentionally avoids frameworks to focus on:
 - Business rule enforcement
 - Clean layered architecture
 - Thin HTTP layer design
+- Client-server separation
+- Incremental full-stack integration
 
 It serves as:
 
@@ -309,6 +347,6 @@ It serves as:
 
 ---
 
-# License
+## License
 
 Educational / personal learning project.
