@@ -80,10 +80,13 @@ Content-Type: {{json}}
   "notes": "Smoke test reservation (api.http)",
   "tableIds": [1]
 }
+###
 
 ### Create reservation (empty body -> 400 example)
 POST {{baseUrl}}/reservations
 Content-Type: {{json}}
+
+###
 
 ### Create reservation (malformed JSON -> 400 example)
 POST {{baseUrl}}/reservations
@@ -94,7 +97,7 @@ Content-Type: {{json}}
   "startAt": "2026-02-21T20:30:00+01:00",
   "partySize": 2,
   "tableIds": [1]
-
+###
 
 ### Confirm reservation
 ### - Put a real reservation id after creating one above
@@ -117,3 +120,4 @@ POST {{baseUrl}}/reservations/{{reservationId}}/cancel
 Content-Type: {{json}}
 
 { "reason":
+###
