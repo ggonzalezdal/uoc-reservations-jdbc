@@ -8,6 +8,7 @@ export const state = {
     reservations: {
         date: "",      // YYYY-MM-DD (from <input type="date">)
         status: "",    // "" means (any)
+        sort: "time_asc",   // ✅ new
         rows: [],
         lastFetchIso: null
     }

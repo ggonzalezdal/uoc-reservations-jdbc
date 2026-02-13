@@ -235,7 +235,7 @@ body {
 /* Controls */
 .controls {
     display: grid;
-    grid-template-columns: 220px 220px auto 1fr;
+    grid-template-columns: repeat(3, 220px) auto 1fr;
     gap: 12px;
     align-items: end;
     margin-bottom: 12px;

@@ -50,13 +50,17 @@ function initDashboard() {
 function initReservationsControls() {
     const dateEl = document.getElementById("date");
     const statusEl = document.getElementById("status");
+    const sortEl = document.getElementById("sort");
     const btnLoad = document.getElementById("btn-load");
     const btnClear = document.getElementById("btn-clear");
 
     // defaults
-    dateEl.value = todayDateInputValue();
+    if (dateEl) dateEl.value = todayDateInputValue();
+    if (sortEl) sortEl.value = state.reservations.sort || "time_asc";
 
+    // Load / Clear
     btnLoad?.addEventListener("click", loadReservations);
+
     btnClear?.addEventListener("click", () => {
         hideError();
         state.reservations.rows = [];
@@ -66,16 +70,20 @@ function initReservationsControls() {
         renderReservationsTable([]);
     });
 
-    // Event delegation for inline Confirm/Cancel buttons rendered in table
+    // Sort change (UI-only, no refetch)
+    sortEl?.addEventListener("change", () => {
+        state.reservations.sort = sortEl.value || "time_asc";
+        renderReservationsTable(sortRows(state.reservations.rows, state.reservations.sort));
+    });
+
+    // Event delegation for inline Confirm/Cancel buttons
     document.getElementById("reservations-tbody")?.addEventListener("click", async (ev) => {
         const btn = ev.target.closest("button[data-action][data-id]");
         if (!btn) return;
-
         if (btn.disabled) return;
 
         const action = btn.dataset.action;
         const id = Number(btn.dataset.id);
-
         if (!Number.isFinite(id) || id <= 0) return;
 
         hideError();
@@ -87,13 +95,11 @@ function initReservationsControls() {
                 const reason = window.prompt("Cancellation reason (optional):", "") ?? "";
                 await api.cancelReservation(id, reason);
             }
-
             await loadReservations(true);
         } catch (e) {
             showError(e);
         }
     });
-
 }
 
 async function loadCustomersIntoSelect() {
@@ -257,7 +263,8 @@ async function loadReservations(isRefreshAfterAction = false) {
         const rows = await api.listReservations({ from, to, status });
         state.reservations.rows = Array.isArray(rows) ? rows : [];
 
-        renderReservationsTable(state.reservations.rows);
+        const sorted = sortRows(state.reservations.rows, state.reservations.sort);
+        renderReservationsTable(sorted);
 
         const nowIso = new Date().toISOString();
         state.reservations.lastFetchIso = nowIso;
@@ -272,6 +279,41 @@ async function loadReservations(isRefreshAfterAction = false) {
         renderReservationsTable([]);
         showError(e);
     }
+}
+
+function toEpochMs(iso) {
+    if (!iso) return Number.NaN;
+    const t = Date.parse(iso);
+    return Number.isFinite(t) ? t : Number.NaN;
+}
+
+function sortRows(rows, sortKey) {
+    const copy = Array.isArray(rows) ? [...rows] : [];
+
+    const key = sortKey || "time_asc";
+
+    copy.sort((a, b) => {
+        // These are raw API rows; renderReservationsTable will normalize, but sorting needs fields too.
+        const aStart = toEpochMs(a.startAt ?? a.start_at);
+        const bStart = toEpochMs(b.startAt ?? b.start_at);
+
+        const aPax = Number(a.partySize ?? a.party_size ?? a.pax ?? 0);
+        const bPax = Number(b.partySize ?? b.party_size ?? b.pax ?? 0);
+
+        switch (key) {
+            case "time_desc":
+                return (bStart - aStart) || 0;
+            case "pax_asc":
+                return (aPax - bPax) || 0;
+            case "pax_desc":
+                return (bPax - aPax) || 0;
+            case "time_asc":
+            default:
+                return (aStart - bStart) || 0;
+        }
+    });
+
+    return copy;
 }
 
 // ---- Boot ----
