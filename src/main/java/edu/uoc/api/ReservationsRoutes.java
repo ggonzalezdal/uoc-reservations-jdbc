@@ -9,6 +9,7 @@ import edu.uoc.service.ReservationService;
 import io.javalin.Javalin;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 public final class ReservationsRoutes {
     private ReservationsRoutes() {}
@@ -56,23 +57,43 @@ public final class ReservationsRoutes {
         });
 
         app.post("/reservations", ctx -> {
-            CreateReservationRequest body = ApiParsers.readRequiredJsonBody(ctx, CreateReservationRequest.class);
+            CreateReservationRequest body =
+                    ApiParsers.readRequiredJsonBody(ctx, CreateReservationRequest.class);
 
-            OffsetDateTime startAt = ApiParsers.parseRequiredOffsetDateTimeField(body.startAt(), "startAt");
-            OffsetDateTime endAt = ApiParsers.parseOptionalOffsetDateTimeField(body.endAt(), "endAt");
+            OffsetDateTime startAt =
+                    ApiParsers.parseRequiredOffsetDateTimeField(body.startAt(), "startAt");
+            OffsetDateTime endAt =
+                    ApiParsers.parseOptionalOffsetDateTimeField(body.endAt(), "endAt");
 
-            long reservationId = reservationService.createReservationWithTables(
-                    body.customerId(),
-                    startAt,
-                    endAt,
-                    body.partySize(),
-                    body.status(),
-                    body.notes(),
-                    body.tableIds()
-            );
+            List<Long> tableIds = body.tableIds(); // may be null/empty (AUTO mode)
+
+            long reservationId;
+            if (tableIds == null || tableIds.isEmpty()) {
+                // AUTO mode: backend assigns tables
+                reservationId = reservationService.createReservationAutoAssignTables(
+                        body.customerId(),
+                        startAt,
+                        endAt,
+                        body.partySize(),
+                        body.status(),
+                        body.notes()
+                );
+            } else {
+                // MANUAL mode: user selected tables
+                reservationId = reservationService.createReservationWithTables(
+                        body.customerId(),
+                        startAt,
+                        endAt,
+                        body.partySize(),
+                        body.status(),
+                        body.notes(),
+                        tableIds
+                );
+            }
 
             ctx.status(201).json(new CreateReservationResponse(reservationId));
         });
+
 
         app.post("/reservations/{id}/confirm", ctx -> {
             long id = Long.parseLong(ctx.pathParam("id"));

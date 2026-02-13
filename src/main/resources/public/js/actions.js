@@ -62,3 +62,22 @@ export function cancelReservation(reservationId, reason /* optional */) {
         ...(hasReason ? { body: JSON.stringify({ reason: r }) } : {})
     });
 }
+
+export function listCustomers() {
+    return apiFetch("/customers");
+}
+
+export function listAvailableTables(start, end) {
+    const params = new URLSearchParams();
+    params.set("start", start);
+    if (end) params.set("end", end);
+    return apiFetch(`/tables/available?${params.toString()}`);
+}
+
+export function createReservation(payload) {
+    return apiFetch("/reservations", {
+        method: "POST",
+        body: JSON.stringify(payload)
+    });
+}
+

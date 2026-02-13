@@ -68,3 +68,11 @@ export function formatDateTimeForCell(iso) {
     const mi = String(dt.getMinutes()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
+
+export function datetimeLocalToOffset(value) {
+    // value like "2026-02-21T20:30"
+    if (!value) return null;
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return null;
+    return toOffsetDateTime(dt);
+}

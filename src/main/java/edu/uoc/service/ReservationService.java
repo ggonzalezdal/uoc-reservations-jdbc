@@ -86,6 +86,10 @@ public class ReservationService {
             endAt = startAt.plusHours(2);
         }
 
+        if (!endAt.isAfter(startAt)) {
+            throw new IllegalArgumentException("endAt must be after startAt");
+        }
+
         if (partySize <= 0) {
             throw new IllegalArgumentException("partySize must be > 0");
         }
@@ -470,6 +474,10 @@ public class ReservationService {
 
         if (endAt == null) {
             endAt = startAt.plusHours(2);
+        }
+
+        if (!endAt.isAfter(startAt)) {
+            throw new IllegalArgumentException("endAt must be after startAt");
         }
 
         if (partySize <= 0) {

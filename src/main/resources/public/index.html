@@ -50,6 +50,7 @@
     <nav class="app-sidebar">
         <button class="nav-link active" data-target="view-landing">Dashboard</button>
         <button class="nav-link" data-target="view-reservations">Reservations</button>
+        <button class="nav-link" data-target="view-create">Create</button>
     </nav>
 
     <main class="app-main">
@@ -160,12 +161,99 @@
                     <button class="ghost-btn" data-target="view-landing">Back to dashboard</button>
                 </div>
             </div>
-
+<!--
             <div class="card card-error hidden" id="error-card" role="alert">
                 <div class="error-title">Request failed</div>
                 <pre class="error-body" id="error-body"></pre>
             </div>
+            -->
         </section>
+
+        <!-- Create Reservation -->
+        <section id="view-create" class="view">
+            <h1 class="view-title">Create Reservation</h1>
+            <p class="view-subtitle">
+                Auto mode uses backend table assignment. Manual mode lets you select available tables.
+            </p>
+
+            <div class="card">
+                <div class="controls" style="grid-template-columns: 260px 260px 160px 1fr;">
+                    <div class="control">
+                        <label for="cr-customer">Customer</label>
+                        <select id="cr-customer"></select>
+                        <button class="ghost-btn" id="cr-load-customers" style="margin-top:8px;">Load customers</button>
+                    </div>
+
+                    <div class="control">
+                        <label for="cr-start">Start</label>
+                        <input id="cr-start" type="datetime-local" />
+                    </div>
+
+                    <div class="control">
+                        <label for="cr-end">End (optional)</label>
+                        <input id="cr-end" type="datetime-local" />
+                    </div>
+
+                    <div class="control">
+                        <label for="cr-party">Party size</label>
+                        <input id="cr-party" type="number" min="1" value="2" />
+                    </div>
+                </div>
+
+                <div class="controls" style="grid-template-columns: 1fr 1fr;">
+                    <div class="control">
+                        <label for="cr-notes">Notes (optional)</label>
+                        <input id="cr-notes" type="text" placeholder="e.g., birthday, high chair, allergies…" />
+                    </div>
+
+                    <div class="control">
+                        <label>Assignment</label>
+                        <div style="display:flex; gap:14px; align-items:center; padding:8px 0;">
+                            <label style="display:flex; gap:8px; align-items:center; cursor:pointer;">
+                                <input type="radio" name="cr-mode" value="auto" checked />
+                                <span class="muted">Auto assign</span>
+                            </label>
+                            <label style="display:flex; gap:8px; align-items:center; cursor:pointer;">
+                                <input type="radio" name="cr-mode" value="manual" />
+                                <span class="muted">Manual select</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="cr-manual-box" class="card" style="margin-top:12px; display:none; background:#020617;">
+                    <div class="controls" style="grid-template-columns: 220px auto 1fr;">
+                        <div class="control">
+                            <label>Availability</label>
+                            <button class="ghost-btn" id="cr-check-availability">Check available tables</button>
+                        </div>
+                        <div class="control control-meta">
+                            <span class="muted" id="cr-available-meta">Not loaded</span>
+                        </div>
+                    </div>
+
+                    <div id="cr-tables-list" class="table-wrapper" style="margin-top:10px; padding:12px;">
+                        <!-- checkboxes injected -->
+                    </div>
+                </div>
+
+                <div class="table-footer-actions">
+                    <button class="ghost-btn" data-target="view-reservations">Back</button>
+                    <button class="primary-btn" id="cr-submit">Create reservation</button>
+                </div>
+            </div>
+<!--
+            <div class="card card-error hidden" id="error-card" role="alert" style="margin-top:14px;">
+                <div class="error-title">Request failed</div>
+                <pre class="error-body" id="error-body"></pre>
+            </div>
+            -->
+        </section>
+
+        <div class="card card-error hidden" id="error-card" role="alert">
+            <div class="error-title">Request failed</div>
+            <pre class="error-body" id="error-body"></pre>
+        </div>
     </main>
 </div>
 

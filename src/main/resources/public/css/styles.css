@@ -440,3 +440,10 @@ body {
     .control-actions { justify-content: flex-start; }
     .control-meta { justify-content: flex-start; }
 }
+
+button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
