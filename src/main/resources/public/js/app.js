@@ -16,15 +16,57 @@ import {
     setAvailableMeta
 } from "./render.js";
 
+const LS_FILTERS_KEY = "war.ui.reservations.filters";
+
+function saveReservationFilters({ date, status, sort }) {
+    try {
+        localStorage.setItem(LS_FILTERS_KEY, JSON.stringify({ date, status, sort }));
+    } catch (_) {
+        // ignore (private mode, quota, etc.)
+    }
+}
+
+function loadReservationFilters() {
+    try {
+        const raw = localStorage.getItem(LS_FILTERS_KEY);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj || typeof obj !== "object") return null;
+        return {
+            date: typeof obj.date === "string" ? obj.date : null,
+            status: typeof obj.status === "string" ? obj.status : "",
+            sort: typeof obj.sort === "string" ? obj.sort : null
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+function applyReservationFiltersToControls(filters) {
+    const dateEl = document.getElementById("date");
+    const statusEl = document.getElementById("status");
+    const sortEl = document.getElementById("sort");
+
+    if (filters?.date && dateEl) dateEl.value = filters.date;
+    if (typeof filters?.status === "string" && statusEl) statusEl.value = filters.status;
+    if (filters?.sort && sortEl) sortEl.value = filters.sort;
+}
+
 function initNav() {
     // Sidebar buttons + header clickable blocks
     document.querySelectorAll("[data-target]").forEach((el) => {
-        el.addEventListener("click", () => {
+        el.addEventListener("click", async () => {
             const target = el.dataset.target;
             if (!target) return;
+
             hideError();
             state.ui.activeViewId = target;
             setActiveView(target);
+
+            // Auto-load reservations when entering the Reservations view
+            if (target === "view-reservations") {
+                await loadReservations(false);
+            }
         });
     });
 }
@@ -54,9 +96,12 @@ function initReservationsControls() {
     const btnLoad = document.getElementById("btn-load");
     const btnClear = document.getElementById("btn-clear");
 
-    // defaults
-    if (dateEl) dateEl.value = todayDateInputValue();
-    if (sortEl) sortEl.value = state.reservations.sort || "time_asc";
+    // defaults (restore last-used filters if available)
+    const saved = loadReservationFilters();
+
+    if (sortEl) sortEl.value = saved?.sort || state.reservations.sort || "time_asc";
+    if (dateEl) dateEl.value = saved?.date || todayDateInputValue();
+    if (statusEl) statusEl.value = (typeof saved?.status === "string") ? saved.status : "";
 
     // Load / Clear
     btnLoad?.addEventListener("click", loadReservations);
@@ -68,6 +113,13 @@ function initReservationsControls() {
         setLastFetch(null);
         setReservationsMeta("Cleared");
         renderReservationsTable([]);
+    });
+
+    // Today button
+    document.getElementById("btn-today")?.addEventListener("click", async () => {
+        hideError();
+        if (dateEl) dateEl.value = todayDateInputValue();
+        await loadReservations(false);
     });
 
     // Sort change (UI-only, no refetch)
@@ -255,6 +307,9 @@ async function loadReservations(isRefreshAfterAction = false) {
     state.reservations.date = selectedDate;
     state.reservations.status = status;
 
+    const sortEl = document.getElementById("sort");
+    state.reservations.sort = sortEl?.value || state.reservations.sort || "time_asc";
+
     const { from, to } = dayWindowOffset(selectedDate);
 
     setReservationsMeta(isRefreshAfterAction ? "Refreshing after action…" : "Loading…");
@@ -274,6 +329,13 @@ async function loadReservations(isRefreshAfterAction = false) {
 
         const statusLabel = status ? `status=${status}` : "status=ANY";
         setReservationsMeta(`Loaded ${state.reservations.rows.length} · ${selectedDate} · ${statusLabel}`);
+
+        saveReservationFilters({
+            date: selectedDate,
+            status: status,
+            sort: state.reservations.sort
+        });
+
     } catch (e) {
         setReservationsMeta("Load failed");
         renderReservationsTable([]);
@@ -325,6 +387,10 @@ function sortRows(rows, sortKey) {
 
     // default view
     setActiveView(state.ui.activeViewId);
+
+    if (state.ui.activeViewId === "view-reservations") {
+        loadReservations(false).catch(() => {});
+    }
 
     // initial health check
     refreshHealth().catch(() => {});
