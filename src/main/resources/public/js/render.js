@@ -146,6 +146,13 @@ export function setReservationsMeta(text) {
     if (el) el.textContent = String(text ?? "");
 }
 
+function normalizeCustomerRow(c) {
+    return {
+        id: c.id ?? c.customerId ?? c.customer_id ?? "",
+        name: c.name ?? c.fullName ?? c.full_name ?? c.customerName ?? c.customer_name ?? ""
+    };
+}
+
 export function renderCustomersSelect(customers) {
     const sel = document.getElementById("cr-customer");
     if (!sel) return;
@@ -157,9 +164,17 @@ export function renderCustomersSelect(customers) {
     }
 
     sel.innerHTML = rows
-        .map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)} (id:${escapeHtml(c.id)})</option>`)
+        .map((raw) => {
+            const c = normalizeCustomerRow(raw);
+            const id = c.id;
+            const name = String(c.name ?? "").trim();
+            const label = name ? `${name} (id:${id})` : `(id:${id})`;
+
+            return `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`;
+        })
         .join("");
 }
+
 
 export function renderAvailableTablesCheckboxes(tables) {
     const box = document.getElementById("cr-tables-list");
