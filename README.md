@@ -9,13 +9,14 @@ The project now includes:
 - Thin HTTP API layer built with Javalin
 - Reservation filtering for calendar-style queries
 - Static Web UI (Milestone 5 MVP) consuming the API
+- Modular frontend architecture (vanilla JS, no framework)
 - Strict layered architecture preserved end-to-end
 
 ---
 
 ## Project Status
 
-**Milestone 5 in progress – Web UI MVP**
+**Milestone 5 – Web UI MVP (Modularized) – Released**
 
 Current implementation includes:
 
@@ -32,11 +33,11 @@ Current implementation includes:
 - ISO-8601 OffsetDateTime serialization
 - Manual API smoke tests (`docs/api.http`)
 - Static Web UI served from `/public`
+- Modular frontend architecture (nav/dashboard/reservations/create)
+- View + filter persistence via `localStorage`
 - Full JavaDoc documentation
 
-Latest stable tag: `v0.4.0` (Milestone 4 – Thin HTTP API)
-
-Milestone 5 development continues on a feature branch.
+Latest stable tag: `v0.5.0` (Milestone 5 – Modular Web UI MVP)
 
 ---
 
@@ -158,11 +159,13 @@ Filtering supports:
 - OffsetDateTime values use ISO-8601 format
 - Error responses follow a consistent structure:
 
-  {
+```json
+{
   "code": "ERROR_CODE",
   "message": "Human readable message",
   "path": "/request/path"
-  }
+}
+```
 
 Status codes:
 
@@ -194,7 +197,7 @@ This allows quick manual verification of:
 
 ---
 
-## Web UI (Milestone 5 MVP)
+## Web UI (Milestone 5 MVP – Modular)
 
 Static assets are served automatically from:
 
@@ -202,16 +205,23 @@ Static assets are served automatically from:
 
 Structure:
 
-    public/
-    ├─ index.html
-    ├─ css/
-    │  └─ styles.css
-    ├─ js/
-    │  ├─ app.js
-    │  ├─ state.js
-    │  ├─ render.js
-    │  └─ actions.js
-    └─ images/
+```
+public/
+├─ index.html
+├─ css/
+│  └─ styles.css
+├─ js/
+│  ├─ app.js
+│  ├─ state.js
+│  ├─ render.js
+│  ├─ actions.js
+│  ├─ storage.js
+│  ├─ nav.js
+│  ├─ dashboard.js
+│  ├─ reservations.js
+│  └─ create.js
+└─ images/
+```
 
 Open in browser:
 
@@ -221,8 +231,12 @@ The UI:
 
 - Fetches reservations via `/reservations`
 - Supports filtering by date window and status
-- Renders results dynamically
+- Supports client-side sorting (time / party size)
+- Persists filters and last active view via `localStorage`
+- Provides manual and automatic reservation creation
+- Dynamically renders results
 - Displays API errors consistently
+- Implements UX safeguards (button disabling, loading states)
 
 No frontend framework is used. Pure HTML, CSS, and vanilla JavaScript.
 
@@ -338,12 +352,13 @@ This project intentionally avoids frameworks to focus on:
 - Thin HTTP layer design
 - Client-server separation
 - Incremental full-stack integration
+- Modular frontend design without frameworks
 
 It serves as:
 
 - A structured academic deliverable
 - A backend architectural reference
-- A foundation for future REST/web UI integration
+- A full-stack foundation for future REST/web UI evolution
 
 ---
 
