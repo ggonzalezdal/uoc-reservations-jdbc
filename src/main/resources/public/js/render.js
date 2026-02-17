@@ -5,6 +5,7 @@ import { formatDateTimeForCell } from "./state.js";
 // --- DOM helpers ---
 const $ = (id) => document.getElementById(id);
 
+
 function escapeHtml(str) {
     return String(str ?? "")
         .replaceAll("&", "&amp;")
@@ -26,7 +27,6 @@ function normalizeReservationRow(r) {
         notes: r.notes ?? ""
     };
 }
-
 
 function badgeHtml(status) {
     const s = String(status ?? "").toUpperCase();
@@ -174,7 +174,6 @@ export function renderCustomersSelect(customers) {
         })
         .join("");
 }
-
 
 export function renderAvailableTablesCheckboxes(tables) {
     const box = document.getElementById("cr-tables-list");
