@@ -111,6 +111,7 @@ export function renderReservationsTable(rows) {
 
         const canConfirm = r.status === "PENDING";
         const canCancel = r.status !== "CANCELLED";
+        const canNoShow = r.status === "PENDING" || r.status === "CONFIRMED";
 
         // Inline actions inside Notes cell (keeps HTML structure unchanged)
         const actions = `
@@ -120,6 +121,9 @@ export function renderReservationsTable(rows) {
         </button>
         <button class="ghost-btn" data-action="cancel" data-id="${escapeHtml(rid)}" ${canCancel ? "" : "disabled"}>
           Cancel
+        </button>
+        <button class="ghost-btn" data-action="no-show" data-id="${escapeHtml(rid)}" ${canNoShow ? "" : "disabled"}>
+          No-show
         </button>
       </div>
     `;

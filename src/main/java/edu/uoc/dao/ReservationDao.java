@@ -565,6 +565,31 @@ public class ReservationDao {
         }
     }
 
+    /**
+     * Marks a reservation as NO_SHOW.
+     *
+     * <p>Rule: only {@code PENDING -> NO_SHOW} or {@code CONFIRMED -> NO_SHOW} is allowed.</p>
+     *
+     * @param conn          existing database connection
+     * @param reservationId reservation ID
+     * @return number of rows updated (0 or 1)
+     */
+    public int noShowById(Connection conn, long reservationId) {
+        String sql = """
+        UPDATE reservations
+        SET status = 'NO_SHOW'
+        WHERE reservation_id = ?
+          AND status IN ('PENDING', 'CONFIRMED')
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, reservationId);
+            return ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to mark reservation as no-show id=" + reservationId, e);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Extra query: capacity information
     // -------------------------------------------------------------------------

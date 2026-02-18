@@ -375,6 +375,72 @@ public class ReservationService {
     }
 
     /**
+     * Marks a reservation as NO_SHOW without deleting historical data.
+     *
+     * <p>Rules:</p>
+     * <ul>
+     *   <li>Valid transitions: {@code PENDING -> NO_SHOW}, {@code CONFIRMED -> NO_SHOW}</li>
+     *   <li>If already NO_SHOW: idempotent (returns false)</li>
+     *   <li>Other statuses are rejected (e.g., CANCELLED)</li>
+     * </ul>
+     *
+     * @param reservationId reservation ID
+     * @return true if marked as NO_SHOW now, false if it was already NO_SHOW
+     * @throws IllegalArgumentException if reservation does not exist or ID is invalid
+     * @throws IllegalStateException if status transition is invalid
+     * @throws RuntimeException if a database error occurs
+     */
+    public boolean noShowReservation(long reservationId) {
+        if (reservationId <= 0) {
+            throw new IllegalArgumentException("reservationId must be > 0");
+        }
+
+        try (Connection conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try {
+                var statusOpt = reservationDao.findStatusById(conn, reservationId);
+
+                if (statusOpt.isEmpty()) {
+                    throw new IllegalArgumentException("Reservation not found: " + reservationId);
+                }
+
+                String status = statusOpt.get();
+
+                if ("NO_SHOW".equalsIgnoreCase(status)) {
+                    conn.commit();
+                    return false;
+                }
+
+                // allowed only from PENDING or CONFIRMED
+                if (!"PENDING".equalsIgnoreCase(status) && !"CONFIRMED".equalsIgnoreCase(status)) {
+                    throw new IllegalStateException("Invalid transition: " + status + " -> NO_SHOW");
+                }
+
+                int updated = reservationDao.noShowById(conn, reservationId);
+
+                if (updated != 1) {
+                    throw new IllegalStateException("No-show failed unexpectedly for reservation: " + reservationId);
+                }
+
+                conn.commit();
+                return true;
+
+            } catch (Exception e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to mark reservation as no-show", e);
+        }
+    }
+
+    /**
      * Validated manual assignment of tables to an existing reservation (CLI option 8).
      *
      * <p>Rules:</p>

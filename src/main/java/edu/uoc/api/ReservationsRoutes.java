@@ -118,5 +118,11 @@ public final class ReservationsRoutes {
 
             ctx.json(new StatusChangeResponse(id, changed));
         });
+
+        app.post("/reservations/{id}/no-show", ctx -> {
+            long id = Long.parseLong(ctx.pathParam("id"));
+            boolean changed = reservationService.noShowReservation(id);
+            ctx.json(new StatusChangeResponse(id, changed));
+        });
     }
 }

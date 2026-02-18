@@ -63,6 +63,12 @@ export function cancelReservation(reservationId, reason /* optional */) {
     });
 }
 
+export function noShowReservation(reservationId) {
+    return apiFetch(`/reservations/${encodeURIComponent(reservationId)}/no-show`, {
+        method: "POST"
+    });
+}
+
 export function listCustomers() {
     return apiFetch("/customers");
 }

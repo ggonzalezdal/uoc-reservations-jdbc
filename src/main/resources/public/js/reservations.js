@@ -155,6 +155,8 @@ export function initReservationsControls() {
             } else if (action === "cancel") {
                 const reason = window.prompt("Cancellation reason (optional):", "") ?? "";
                 await api.cancelReservation(id, reason);
+            } else if (action === "no-show") {
+                await api.noShowReservation(id);
             }
             await loadReservations(true);
         } catch (e) {
