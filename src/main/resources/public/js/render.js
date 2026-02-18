@@ -24,7 +24,8 @@ function normalizeReservationRow(r) {
         endAt: r.endAt ?? r.end_at ?? "",
         partySize: r.partySize ?? r.party_size ?? r.pax ?? "",
         status: String(r.status ?? "").toUpperCase(),
-        notes: r.notes ?? ""
+        notes: r.notes ?? "",
+        tableCodes: r.tableCodes || r.table_codes || [],
     };
 }
 
@@ -97,7 +98,7 @@ export function renderReservationsTable(rows) {
     if (!tbody) return;
 
     if (!rows || rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="muted">No reservations found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="muted">No reservations found.</td></tr>`;
         return;
     }
 
@@ -112,6 +113,8 @@ export function renderReservationsTable(rows) {
         const canConfirm = r.status === "PENDING";
         const canCancel = r.status !== "CANCELLED";
         const canNoShow = r.status === "PENDING" || r.status === "CONFIRMED";
+        const tables = Array.isArray(r.tableCodes) ? r.tableCodes : [];
+        const tablesText = tables.length ? tables.join(", ") : "-";
 
         // Inline actions inside Notes cell (keeps HTML structure unchanged)
         const actions = `
@@ -136,6 +139,7 @@ export function renderReservationsTable(rows) {
         <td>${escapeHtml(formatDateTimeForCell(r.endAt) || "-")}</td>
         <td>${escapeHtml(r.partySize || "-")}</td>
         <td>${badgeHtml(r.status)}</td>
+        <td>${escapeHtml(tablesText)}</td>
         <td>
           ${escapeHtml(r.notes || "")}
           ${actions}

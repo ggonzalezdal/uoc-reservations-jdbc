@@ -1,6 +1,7 @@
 package edu.uoc.dto;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 /**
  * Data Transfer Object representing a reservation list view.
@@ -24,6 +25,7 @@ public class ReservationListItem {
     private final String status;
     private final String notes;              // nullable
     private final OffsetDateTime createdAt;
+    private final List<String> tableCodes;
 
     /**
      * Creates a reservation list projection.
@@ -46,7 +48,8 @@ public class ReservationListItem {
                                int partySize,
                                String status,
                                String notes,
-                               OffsetDateTime createdAt) {
+                               OffsetDateTime createdAt,
+                               List<String> tableCodes) {
         this.reservationId = reservationId;
         this.customerId = customerId;
         this.customerName = customerName;
@@ -56,6 +59,7 @@ public class ReservationListItem {
         this.status = status;
         this.notes = notes;
         this.createdAt = createdAt;
+        this.tableCodes = tableCodes;
     }
 
     public long getReservationId() { return reservationId; }
@@ -67,6 +71,7 @@ public class ReservationListItem {
     public String getStatus() { return status; }
     public String getNotes() { return notes; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
+    public List<String> getTableCodes() { return tableCodes; }
 
     @Override
     public String toString() {
@@ -81,6 +86,7 @@ public class ReservationListItem {
                     status='%s',
                     notes='%s',
                     createdAt=%s
+                    tableCodes=%s,
                 }
                 """.formatted(
                 reservationId,
@@ -91,7 +97,8 @@ public class ReservationListItem {
                 partySize,
                 status,
                 notes,
-                createdAt
+                createdAt,
+                tableCodes
         );
     }
 }

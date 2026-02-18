@@ -4,16 +4,9 @@ import edu.uoc.db.Database;
 import edu.uoc.dto.ReservationListItem;
 import edu.uoc.model.Reservation;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.*;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Data Access Object for {@link Reservation} and reservation-related queries.
@@ -448,9 +441,16 @@ public class ReservationDao {
           r.party_size,
           r.status,
           r.notes,
-          r.created_at
+          r.created_at,
+          COALESCE(
+            ARRAY_AGG(t.table_code ORDER BY t.table_code)
+              FILTER (WHERE t.table_code IS NOT NULL),
+            ARRAY[]::text[]
+          ) AS table_codes
         FROM reservations r
         JOIN customers c ON c.customer_id = r.customer_id
+        LEFT JOIN reservation_tables rt ON rt.reservation_id = r.reservation_id
+        LEFT JOIN tables t ON t.table_id = rt.table_id
         WHERE 1=1
         """);
 
@@ -472,7 +472,19 @@ public class ReservationDao {
             params.add(status.trim());
         }
 
-        sql.append(" ORDER BY r.start_at ");
+        sql.append("""
+         GROUP BY
+          r.reservation_id,
+          r.customer_id,
+          c.full_name,
+          r.start_at,
+          r.end_at,
+          r.party_size,
+          r.status,
+          r.notes,
+          r.created_at
+         ORDER BY r.start_at
+        """);
 
         List<ReservationListItem> results = new ArrayList<>();
 
@@ -642,6 +654,14 @@ public class ReservationDao {
     // -------------------------------------------------------------------------
 
     private ReservationListItem mapReservationListItem(ResultSet rs) throws SQLException {
+
+        Array tableArray = rs.getArray("table_codes");
+
+        List<String> tableCodes = List.of();
+        if (tableArray != null) {
+            String[] values = (String[]) tableArray.getArray();
+            tableCodes = (values == null) ? List.of() : Arrays.asList(values);
+        }
         return new ReservationListItem(
                 rs.getLong("reservation_id"),
                 rs.getLong("customer_id"),
@@ -651,7 +671,8 @@ public class ReservationDao {
                 rs.getInt("party_size"),
                 rs.getString("status"),
                 rs.getString("notes"),
-                rs.getObject("created_at", OffsetDateTime.class)
+                rs.getObject("created_at", OffsetDateTime.class),
+                tableCodes
         );
     }
 }
